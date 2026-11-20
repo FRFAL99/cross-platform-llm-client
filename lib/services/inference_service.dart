@@ -7,6 +7,8 @@ import 'device_info_service.dart';
 import 'app_log_service.dart';
 import 'cluster_service.dart';
 import 'context_window.dart';
+import 'history_summary.dart';
+import '../utils/thought_parser.dart';
 import 'stop_sequence_filter.dart';
 import '../core/ui.dart' show showToast, ToastTone;
 import '../models/benchmark_result.dart';
@@ -143,21 +145,11 @@ class InferenceService extends GetxService {
     required int reserveTokens,
   }) async {
     droppedHistoryMessages.value = 0;
-    final ctx = contextTokensTotal.value;
-    if (history == null || history.isEmpty || ctx <= 0) return history;
-
-    final texts = [
-      systemPrompt,
-      prompt,
-      for (final m in history) m['content'] ?? ''
-    ];
-    final counts = await _countTokens(texts);
-    final keepFrom = ContextWindow.firstToKeep(
+    if (history == null || history.isEmpty) return history;
+    final keepFrom = await historyCut(
+      prompt: prompt,
+      systemPrompt: systemPrompt,
       history: history,
-      messageTokens: counts.sublist(2),
-      systemTokens: counts[0],
-      promptTokens: counts[1],
-      contextTokens: ctx,
       reserveTokens: reserveTokens,
     );
     droppedHistoryMessages.value = keepFrom;
@@ -166,6 +158,84 @@ class InferenceService extends GetxService {
           'Context: left out the $keepFrom oldest of ${history.length} messages');
     }
     return history.sublist(keepFrom);
+  }
+
+  /// How many of the oldest [history] messages must be left out so the rest
+  /// fits in the context window with [prompt], [systemPrompt] and
+  /// [reserveTokens] for the reply (see [ContextWindow.firstToKeep]). Zero
+  /// when no model is loaded.
+  Future<int> historyCut({
+    required String prompt,
+    required String systemPrompt,
+    required List<Map<String, String>> history,
+    required int reserveTokens,
+  }) async {
+    final ctx = contextTokensTotal.value;
+    if (history.isEmpty || ctx <= 0) return 0;
+    final counts = await _countTokens(
+        [systemPrompt, prompt, for (final m in history) m['content'] ?? '']);
+    return ContextWindow.firstToKeep(
+      history: history,
+      messageTokens: counts.sublist(2),
+      systemTokens: counts[0],
+      promptTokens: counts[1],
+      contextTokens: ctx,
+      reserveTokens: reserveTokens,
+    );
+  }
+
+  /// The reply budget a chat turn uses: the Max tokens setting.
+  int get chatReplyTokens =>
+      _hive.getSetting<int>(AppConstants.keyMaxTokens,
+          defaultValue: AppConstants.defaultMaxTokens) ??
+      AppConstants.defaultMaxTokens;
+
+  /// Summarizes [messages] (oldest first), folding in [previous], the
+  /// summary of what came before them. Long runs are summarized a part at a
+  /// time so each request fits in the context window. Returns null when the
+  /// model is missing, a request fails or the user stops it.
+  Future<String?> summarizeHistory({
+    String? previous,
+    required List<Map<String, String>> messages,
+  }) async {
+    final ctx = contextTokensTotal.value;
+    if (messages.isEmpty || ctx <= 0) return previous;
+    final counts =
+        await _countTokens([for (final m in messages) m['content'] ?? '']);
+    final int previousTokens =
+        previous == null ? 0 : (await _countTokens([previous])).first;
+    // Room left for the transcript: the context minus the instructions,
+    // the summary so far and the summary being written.
+    const summaryTokens = HistorySummarizer.maxSummaryTokens;
+    final budget = ctx -
+        summaryTokens * 2 -
+        (previousTokens > summaryTokens ? previousTokens : summaryTokens) -
+        96;
+    var summary = previous;
+    for (final group in HistorySummarizer.chunks(messages, counts,
+        budget: budget < 256 ? 256 : budget)) {
+      final stops = _stopCount;
+      final text = await generate(
+        prompt: HistorySummarizer.prompt(summary, group),
+        systemPrompt: HistorySummarizer.systemPrompt,
+        source: 'summary',
+        maxTokens: HistorySummarizer.maxSummaryTokens,
+        temperature: 0.2,
+      );
+      if (_stopCount != stops || lastUsage == null) return null;
+      final answer = splitThoughtTags(text).answer.trim();
+      if (answer.isEmpty ||
+          answer.startsWith('ERROR:') ||
+          answer.startsWith('⚠️')) {
+        Get.find<AppLogService>()
+            .warning('Could not summarize earlier messages', details: text);
+        return null;
+      }
+      summary = answer;
+    }
+    Get.find<AppLogService>()
+        .info('Context: summarized ${messages.length} older messages');
+    return summary;
   }
 
   /// Token counts from the model's tokenizer, cached; about 4 characters a

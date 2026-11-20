@@ -21,6 +21,7 @@ class SettingsController extends GetxController {
 
   final fontScale = AppConstants.defaultFontScale.obs;
   final hapticsEnabled = true.obs;
+  final summarizeHistory = true.obs;
   final appVersion = ''.obs;
 
   // Persistent text controllers for settings fields
@@ -82,6 +83,10 @@ class SettingsController extends GetxController {
             defaultValue: true) ??
         true;
     Haptics.enabled = hapticsEnabled.value;
+    summarizeHistory.value = _hive.getSetting<bool>(
+            AppConstants.keySummarizeHistory,
+            defaultValue: true) ??
+        true;
 
     // Sync controllers with loaded values
     globalSystemPromptController.text = globalSystemPrompt.value;
@@ -164,6 +169,11 @@ class SettingsController extends GetxController {
     // A little confirmation tick when turning it on.
     Haptics.selectionClick();
     await _hive.setSetting(AppConstants.keyHapticsEnabled, value);
+  }
+
+  Future<void> setSummarizeHistory(bool value) async {
+    summarizeHistory.value = value;
+    await _hive.setSetting(AppConstants.keySummarizeHistory, value);
   }
 
   Future<void> setFontScale(double value) async {
