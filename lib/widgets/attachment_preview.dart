@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 class AttachmentPreview extends StatelessWidget {
   final String fileName;
@@ -59,7 +58,7 @@ class AttachmentPreview extends StatelessWidget {
                   fileName,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.inter(
+                  style: TextStyle(fontFamily: 'Inter',
                     fontSize: compact ? 13 : 14,
                     color: Theme.of(context).colorScheme.onSurface,
                     fontWeight: FontWeight.w500,
@@ -72,7 +71,7 @@ class AttachmentPreview extends StatelessWidget {
                       : label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.inter(
+                  style: TextStyle(fontFamily: 'Inter',
                     fontSize: 12,
                     color: Theme.of(context).hintColor,
                     fontWeight: FontWeight.w400,

@@ -3,7 +3,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, LicenseEntryWithLineBreaks, LicenseRegistry;
 import 'package:get/get.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'controllers/settings_controller.dart';
@@ -27,6 +27,14 @@ void main() {
 
   runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
+
+    // Bundled fonts are under the SIL Open Font License.
+    LicenseRegistry.addLicense(() async* {
+      for (final font in ['Inter', 'FiraCode']) {
+        final text = await rootBundle.loadString('assets/fonts/$font-OFL.txt');
+        yield LicenseEntryWithLineBreaks([font], text);
+      }
+    });
 
     // Register logger first so everything routes to it
     final appLog = AppLogService();

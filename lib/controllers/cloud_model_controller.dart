@@ -40,7 +40,6 @@ class CloudModelController extends GetxController {
       'openai/gpt-4o',
       'anthropic/claude-3.5-sonnet',
       'google/gemini-2.5-flash',
-      'deepseek/deepseek-chat',
       'meta-llama/llama-3.1-8b-instruct',
     ],
     'openai': [
@@ -51,11 +50,11 @@ class CloudModelController extends GetxController {
       'gpt-4o',
       'gpt-4o-mini',
     ],
-    'deepseek': [
-      'deepseek-v4-flash',
-      'deepseek-v4-pro',
-      'deepseek-chat',
-      'deepseek-reasoner',
+    'anthropic': [
+      'claude-sonnet-5-5',
+      'claude-opus-5-5',
+      'claude-haiku-5-5',
+      'claude-sonnet-4-6',
     ],
     'google': [
       'gemini-2.5-flash',
@@ -63,13 +62,6 @@ class CloudModelController extends GetxController {
       'gemini-2.0-flash',
       'gemini-1.5-flash',
       'gemini-1.5-pro',
-    ],
-    'nvidia': [
-      'meta/llama-3.1-8b-instruct',
-      'meta/llama-3.1-70b-instruct',
-      'meta/llama-3.3-70b-instruct',
-      'mistralai/mixtral-8x7b-instruct-v0.1',
-      'nvidia/llama-3.1-nemotron-70b-instruct',
     ],
   };
 
@@ -87,22 +79,16 @@ class CloudModelController extends GetxController {
       icon: Icons.auto_awesome,
     ),
     CloudProviderInfo(
-      id: 'deepseek',
-      name: 'DeepSeek',
-      description: 'OpenAI compatible V4 models',
-      icon: Icons.psychology_alt_outlined,
+      id: 'anthropic',
+      name: 'Anthropic',
+      description: 'Claude models, native API',
+      icon: Icons.auto_awesome_outlined,
     ),
     CloudProviderInfo(
       id: 'google',
       name: 'Google Gemini',
       description: 'Gemini native API models',
       icon: Icons.diamond_outlined,
-    ),
-    CloudProviderInfo(
-      id: 'nvidia',
-      name: 'NVIDIA NIM',
-      description: 'OpenAI compatible hosted NIM models',
-      icon: Icons.memory_outlined,
     ),
     CloudProviderInfo(
       id: 'custom',
@@ -155,12 +141,10 @@ class CloudModelController extends GetxController {
     switch (provider) {
       case 'openrouter':
         return _settings.openRouterModel.value;
-      case 'deepseek':
-        return _settings.deepSeekModel.value;
+      case 'anthropic':
+        return _settings.anthropicModel.value;
       case 'google':
         return _settings.googleModel.value;
-      case 'nvidia':
-        return _settings.nvidiaModel.value;
       case 'custom':
         return _settings.customCloudModel.value;
       default:
@@ -172,12 +156,10 @@ class CloudModelController extends GetxController {
     switch (provider) {
       case 'openrouter':
         return _settings.openRouterKey.value;
-      case 'deepseek':
-        return _settings.deepSeekKey.value;
+      case 'anthropic':
+        return _settings.anthropicKey.value;
       case 'google':
         return _settings.googleKey.value;
-      case 'nvidia':
-        return _settings.nvidiaKey.value;
       case 'custom':
         return _settings.customCloudKey.value;
       default:
@@ -243,7 +225,6 @@ class CloudModelController extends GetxController {
   List<String> modelTagsFor(String provider, String modelId) {
     final normalized =
         provider == 'google' ? modelId.replaceFirst('models/', '') : modelId;
-    if (provider == 'nvidia') return const ['NIM'];
     return modelTagsByProvider[provider]?[normalized] ??
         modelTagsByProvider[provider]?[modelId] ??
         const <String>[];
@@ -416,20 +397,18 @@ class CloudModelController extends GetxController {
           Uri.parse('${AppConstants.openRouterEndpoint}/models'),
           headers: {'Authorization': 'Bearer ${apiKeyFor(provider)}'},
         );
-      case 'deepseek':
+      case 'anthropic':
         return http.get(
-          Uri.parse('${AppConstants.deepSeekEndpoint}/models'),
-          headers: {'Authorization': 'Bearer ${apiKeyFor(provider)}'},
+          Uri.parse('https://api.anthropic.com/v1/models?limit=100'),
+          headers: {
+            'x-api-key': apiKeyFor(provider),
+            'anthropic-version': '2023-06-01',
+          },
         );
       case 'google':
         return http.get(
           Uri.parse(AppConstants.googleEndpoint),
           headers: {'x-goog-api-key': apiKeyFor(provider)},
-        );
-      case 'nvidia':
-        return http.get(
-          Uri.parse('${AppConstants.nvidiaEndpoint}/models'),
-          headers: {'Authorization': 'Bearer ${apiKeyFor(provider)}'},
         );
       default:
         return http.get(

@@ -345,7 +345,7 @@ class SettingsView extends GetView<SettingsController> {
       AppRow(
         icon: Icons.schedule_rounded,
         title: 'Check automatically',
-        subtitle: 'Look for a new release once a day',
+        subtitle: 'Off by default. Contacts GitHub when the app starts',
         trailing: Switch(
           value: updates.autoCheck.value,
           onChanged: updates.setAutoCheck,

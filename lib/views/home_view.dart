@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../controllers/home_controller.dart';
 import '../widgets/chat_drawer.dart';
 import 'chat_view.dart';
@@ -122,7 +121,7 @@ class HomeView extends GetView<HomeController> {
                         ),
                         const SizedBox(height: 3),
                         Text(_tabs[i].label,
-                            style: GoogleFonts.inter(
+                            style: TextStyle(fontFamily: 'Inter',
                                 fontSize: 10.5,
                                 letterSpacing: 0.1,
                                 fontWeight: current == i
@@ -181,7 +180,7 @@ class HomeView extends GetView<HomeController> {
                                 color: sel ? accent : muted, size: 20),
                             const SizedBox(height: 3),
                             Text(tab.label,
-                                style: GoogleFonts.inter(
+                                style: TextStyle(fontFamily: 'Inter',
                                     fontSize: 10,
                                     fontWeight:
                                         sel ? FontWeight.w600 : FontWeight.w400,

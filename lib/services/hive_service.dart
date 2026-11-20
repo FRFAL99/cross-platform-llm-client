@@ -21,16 +21,13 @@ class HiveService extends GetxService {
     AppConstants.keyOpenaiKey,
     AppConstants.keyAnthropicKey,
     AppConstants.keyGoogleKey,
-    AppConstants.keyKimiKey,
-    AppConstants.keyNvidiaKey,
     AppConstants.keyOpenRouterKey,
-    AppConstants.keyDeepSeekKey,
     AppConstants.keyCustomCloudKey,
     AppConstants.keyServerApiKey,
   };
 
   /// Settings of removed features (Stable Diffusion and Stability AI image
-  /// generation, LiteRT). Deleted on startup so no stale data or keys remain.
+  /// generation, LiteRT, the Kimi / NVIDIA / DeepSeek cloud presets). Deleted on startup so no stale data or keys remain.
   static const _removedFeatureKeys = [
     'stability_api_key',
     'stability_model',
@@ -47,6 +44,21 @@ class HiveService extends GetxService {
     'litert_gpu_crash_detected',
     'last_loaded_context_size',
     'batch_mode_warning_accepted',
+    'kimi_model',
+    'nvidia_model',
+    'deepseek_model',
+    'cloud_model_cache_nvidia',
+    'cloud_model_cache_time_nvidia',
+    'cloud_model_cache_deepseek',
+    'cloud_model_cache_time_deepseek',
+  ];
+
+  /// API keys of removed cloud presets (Kimi, NVIDIA NIM, DeepSeek; they work
+  /// through the Custom API provider). Deleted from secure storage and Hive.
+  static const _removedSecretKeys = [
+    'kimi_api_key',
+    'nvidia_api_key',
+    'deepseek_api_key',
   ];
 
   static const _secureOpTimeout = Duration(seconds: 3);
@@ -82,7 +94,15 @@ class HiveService extends GetxService {
         !currentServerKeys.contains(key));
     await _settingsBox.deleteAll(obsoleteServerKeys);
     await _settingsBox.deleteAll(_removedFeatureKeys);
+    await _settingsBox.deleteAll(_removedSecretKeys);
     await _loadSecrets();
+    if (_secureAvailable) {
+      for (final key in _removedSecretKeys) {
+        try {
+          await _secure.delete(key: key).timeout(_secureOpTimeout);
+        } catch (_) {}
+      }
+    }
     return this;
   }
 

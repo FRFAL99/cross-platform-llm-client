@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:archive/archive.dart';
 import 'package:xml/xml.dart';
-import 'package:syncfusion_flutter_pdf/pdf.dart';
+import 'package:pdfrx/pdfrx.dart';
 
 /// Extracts plain text from document files (PDF, DOCX) so they can be
 /// fed into local or cloud LLMs as context.
@@ -38,15 +38,21 @@ class DocumentExtractorService {
     }
   }
 
-  /// Extract text from a PDF file using Syncfusion PDF.
+  /// Extract text from a PDF file with pdfrx (PDFium, open source, on device).
   static Future<String> _extractPdf(String path) async {
-    final bytes = await File(path).readAsBytes();
-    final document = PdfDocument(inputBytes: bytes);
+    await pdfrxFlutterInitialize();
+    final document = await PdfDocument.openFile(path);
     try {
-      final extractor = PdfTextExtractor(document);
-      return extractor.extractText();
+      final pages = <String>[];
+      for (final page in document.pages) {
+        final text = await page.loadText();
+        if (text != null && text.fullText.trim().isNotEmpty) {
+          pages.add(text.fullText);
+        }
+      }
+      return pages.join('\n\n');
     } finally {
-      document.dispose();
+      await document.dispose();
     }
   }
 

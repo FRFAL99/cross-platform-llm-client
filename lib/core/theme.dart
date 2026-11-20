@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'colors.dart';
 
 class AppTheme {
@@ -42,9 +41,8 @@ class AppTheme {
         onError: Colors.white,
         surfaceContainerHighest: surfaceHigh,
       ),
-      textTheme: GoogleFonts.interTextTheme(
-        isDark ? ThemeData.dark().textTheme : ThemeData.light().textTheme,
-      ).apply(
+      textTheme: (isDark ? ThemeData.dark().textTheme : ThemeData.light().textTheme).apply(
+        fontFamily: 'Inter',
         bodyColor: textPrimary,
         displayColor: textPrimary,
       ),
@@ -56,7 +54,7 @@ class AppTheme {
         scrolledUnderElevation: 0,
         centerTitle: false,
         surfaceTintColor: Colors.transparent,
-        titleTextStyle: GoogleFonts.inter(
+        titleTextStyle: TextStyle(fontFamily: 'Inter',
           fontSize: 17,
           fontWeight: FontWeight.w600,
           color: textPrimary,
@@ -83,8 +81,8 @@ class AppTheme {
         unselectedItemColor: textMuted,
         type: BottomNavigationBarType.fixed,
         elevation: 0,
-        selectedLabelStyle: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w600),
-        unselectedLabelStyle: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w400),
+        selectedLabelStyle: const TextStyle(fontFamily: 'Inter', fontSize: 10, fontWeight: FontWeight.w600),
+        unselectedLabelStyle: const TextStyle(fontFamily: 'Inter', fontSize: 10, fontWeight: FontWeight.w400),
       ),
 
       // ── Input ──
@@ -104,8 +102,8 @@ class AppTheme {
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(color: isDark ? const Color(0xFF0A84FF) : AppColors.primary, width: 1),
         ),
-        hintStyle: GoogleFonts.inter(color: textMuted, fontSize: 15),
-        labelStyle: GoogleFonts.inter(color: textMuted, fontSize: 14),
+        hintStyle: TextStyle(fontFamily: 'Inter', color: textMuted, fontSize: 15),
+        labelStyle: TextStyle(fontFamily: 'Inter', color: textMuted, fontSize: 14),
       ),
 
       // ── Buttons ──
@@ -116,7 +114,7 @@ class AppTheme {
           elevation: 0,
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          textStyle: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w600),
+          textStyle: const TextStyle(fontFamily: 'Inter', fontSize: 15, fontWeight: FontWeight.w600),
         ),
       ),
 
@@ -126,14 +124,14 @@ class AppTheme {
           side: BorderSide(color: separator),
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          textStyle: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w500),
+          textStyle: const TextStyle(fontFamily: 'Inter', fontSize: 14, fontWeight: FontWeight.w500),
         ),
       ),
 
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: isDark ? const Color(0xFF0A84FF) : AppColors.primary,
-          textStyle: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w500),
+          textStyle: const TextStyle(fontFamily: 'Inter', fontSize: 15, fontWeight: FontWeight.w500),
         ),
       ),
 
@@ -144,7 +142,7 @@ class AppTheme {
           elevation: 0,
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          textStyle: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600),
+          textStyle: const TextStyle(fontFamily: 'Inter', fontSize: 14, fontWeight: FontWeight.w600),
         ),
       ),
 
@@ -179,7 +177,7 @@ class AppTheme {
       chipTheme: ChipThemeData(
         backgroundColor: surface,
         selectedColor: (isDark ? const Color(0xFF0A84FF) : AppColors.primary).withValues(alpha: 0.14),
-        labelStyle: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w500),
+        labelStyle: const TextStyle(fontFamily: 'Inter', fontSize: 13, fontWeight: FontWeight.w500),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         side: BorderSide(color: separator),
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -198,7 +196,7 @@ class AppTheme {
           }),
           side: WidgetStateProperty.all(BorderSide(color: separator)),
           shape: WidgetStateProperty.all(RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-          textStyle: WidgetStateProperty.all(GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w500)),
+          textStyle: WidgetStateProperty.all(const TextStyle(fontFamily: 'Inter', fontSize: 14, fontWeight: FontWeight.w500)),
         ),
       ),
 
@@ -207,7 +205,7 @@ class AppTheme {
       dialogTheme: DialogThemeData(
         backgroundColor: isDark ? const Color(0xFF2C2C2E) : Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        titleTextStyle: GoogleFonts.inter(fontSize: 17, fontWeight: FontWeight.w600, color: textPrimary),
+        titleTextStyle: TextStyle(fontFamily: 'Inter', fontSize: 17, fontWeight: FontWeight.w600, color: textPrimary),
       ),
       bottomSheetTheme: BottomSheetThemeData(
         backgroundColor: isDark ? const Color(0xFF1C1C1E) : Colors.white,
@@ -221,8 +219,8 @@ class AppTheme {
       ),
       listTileTheme: ListTileThemeData(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-        titleTextStyle: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w400, color: textPrimary),
-        subtitleTextStyle: GoogleFonts.inter(fontSize: 13, color: textMuted),
+        titleTextStyle: TextStyle(fontFamily: 'Inter', fontSize: 15, fontWeight: FontWeight.w400, color: textPrimary),
+        subtitleTextStyle: TextStyle(fontFamily: 'Inter', fontSize: 13, color: textMuted),
         iconColor: textMuted,
       ),
       radioTheme: RadioThemeData(
@@ -237,7 +235,7 @@ class AppTheme {
       ),
       snackBarTheme: SnackBarThemeData(
         backgroundColor: isDark ? const Color(0xFF2C2C2E) : const Color(0xFF1C1C1E),
-        contentTextStyle: GoogleFonts.inter(fontSize: 14, color: Colors.white),
+        contentTextStyle: const TextStyle(fontFamily: 'Inter', fontSize: 14, color: Colors.white),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         behavior: SnackBarBehavior.floating,
       ),

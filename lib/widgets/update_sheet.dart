@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:get/get.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../core/ui.dart';
 import '../services/update_service.dart';
@@ -34,7 +33,7 @@ class UpdateSheet extends StatelessWidget {
             child:
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('Update available',
-                  style: GoogleFonts.inter(
+                  style: TextStyle(fontFamily: 'Inter',
                       fontSize: 20,
                       fontWeight: FontWeight.w700,
                       letterSpacing: -0.5,

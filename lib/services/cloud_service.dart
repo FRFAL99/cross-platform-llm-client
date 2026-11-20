@@ -20,14 +20,8 @@ class CloudService extends GetxService {
         return _hive.getSetting(AppConstants.keyAnthropicKey) ?? '';
       case 'google':
         return _hive.getSetting(AppConstants.keyGoogleKey) ?? '';
-      case 'kimi':
-        return _hive.getSetting(AppConstants.keyKimiKey) ?? '';
-      case 'nvidia':
-        return _hive.getSetting(AppConstants.keyNvidiaKey) ?? '';
       case 'openrouter':
         return _hive.getSetting(AppConstants.keyOpenRouterKey) ?? '';
-      case 'deepseek':
-        return _hive.getSetting(AppConstants.keyDeepSeekKey) ?? '';
       case 'custom':
         return _hive.getSetting(AppConstants.keyCustomCloudKey) ?? '';
       default:
@@ -43,17 +37,9 @@ class CloudService extends GetxService {
       case 'google':
         return _hive.getSetting(AppConstants.keyGoogleModel) ??
             'gemini-2.5-flash';
-      case 'kimi':
-        return _hive.getSetting(AppConstants.keyKimiModel) ?? 'kimi-k2.6';
-      case 'nvidia':
-        return _hive.getSetting(AppConstants.keyNvidiaModel) ??
-            'meta/llama-3.1-8b-instruct';
       case 'openrouter':
         return _hive.getSetting(AppConstants.keyOpenRouterModel) ??
             'openai/gpt-4o-mini';
-      case 'deepseek':
-        return _hive.getSetting(AppConstants.keyDeepSeekModel) ??
-            'deepseek-v4-flash';
       case 'custom':
         return _hive.getSetting(AppConstants.keyCustomCloudModel) ?? '';
       default:
@@ -114,7 +100,6 @@ class CloudService extends GetxService {
           imageBase64: imageBase64,
           temperature: temperature,
           maxTokens: maxTokens,
-          extraHeaders: _openAICompatibleExtraHeaders,
           onToken: onToken,
         );
       }
@@ -126,16 +111,8 @@ class CloudService extends GetxService {
         case 'google':
           return await _sendGoogle(
               messages, imageBase64, temperature, maxTokens);
-        case 'kimi':
-          return await _sendKimi(messages, imageBase64, temperature, maxTokens);
-        case 'nvidia':
-          return await _sendNvidia(
-              messages, imageBase64, temperature, maxTokens);
         case 'openrouter':
           return await _sendOpenRouter(
-              messages, imageBase64, temperature, maxTokens);
-        case 'deepseek':
-          return await _sendDeepSeek(
               messages, imageBase64, temperature, maxTokens);
         case 'custom':
           return await _sendCustomOpenAICompatible(
@@ -156,28 +133,19 @@ class CloudService extends GetxService {
 
   bool get _supportsStreaming =>
       _provider == 'openai' ||
-      _provider == 'nvidia' ||
       _provider == 'openrouter' ||
-      _provider == 'deepseek' ||
-      _provider == 'custom' ||
-      _provider == 'kimi';
+      _provider == 'custom';
 
   String get _openAICompatibleEndpoint {
     switch (_provider) {
-      case 'nvidia':
-        return '${AppConstants.nvidiaEndpoint}/chat/completions';
       case 'openrouter':
         return '${AppConstants.openRouterEndpoint}/chat/completions';
-      case 'deepseek':
-        return '${AppConstants.deepSeekEndpoint}/chat/completions';
       case 'custom':
         final baseUrl =
             (_hive.getSetting(AppConstants.keyCustomCloudBaseUrl) ?? '')
                 .toString()
                 .replaceAll(RegExp(r'/+$'), '');
         return '$baseUrl/chat/completions';
-      case 'kimi':
-        return AppConstants.kimiEndpoint;
       default:
         return AppConstants.openaiEndpoint;
     }
@@ -185,30 +153,14 @@ class CloudService extends GetxService {
 
   String get _providerLabel {
     switch (_provider) {
-      case 'nvidia':
-        return 'NVIDIA NIM';
       case 'openrouter':
         return 'OpenRouter';
-      case 'deepseek':
-        return 'DeepSeek';
       case 'custom':
         return _hive.getSetting(AppConstants.keyCustomCloudName) ??
             'Custom API';
-      case 'kimi':
-        return 'Kimi';
       default:
         return 'OpenAI';
     }
-  }
-
-  Map<String, String> get _openAICompatibleExtraHeaders {
-    if (_provider == 'openrouter') {
-      return const {
-        'HTTP-Referer': 'https://ai-chat.local',
-        'X-Title': 'AI Chat',
-      };
-    }
-    return const {};
   }
 
   // ─── OpenAI ─────────────────────────────────────
@@ -391,91 +343,6 @@ class CloudService extends GetxService {
     return '';
   }
 
-  // ─── Kimi (Moonshot AI — OpenAI-compatible) ─────
-
-  Future<String> _sendKimi(
-    List<Map<String, String>> messages,
-    String? imageBase64,
-    double? temperature,
-    int? maxTokens,
-  ) async {
-    final apiMessages = <Map<String, dynamic>>[];
-
-    for (final msg in messages) {
-      apiMessages.add({'role': msg['role'], 'content': msg['content']});
-    }
-
-    final response = await _post(
-      Uri.parse(AppConstants.kimiEndpoint),
-      headers: {
-        'Authorization': 'Bearer $_apiKey',
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode({
-        'model': _model,
-        'messages': apiMessages,
-        'temperature': temperature ?? AppConstants.defaultTemperature,
-        'max_tokens': maxTokens ?? AppConstants.defaultMaxTokens,
-      }),
-    );
-
-    if (response.statusCode != 200) {
-      return 'ERROR: Kimi returned ${response.statusCode} — ${response.body}';
-    }
-
-    final data = jsonDecode(response.body);
-    return data['choices'][0]['message']['content'] ?? '';
-  }
-
-  Future<String> _sendNvidia(
-    List<Map<String, String>> messages,
-    String? imageBase64,
-    double? temperature,
-    int? maxTokens,
-  ) async {
-    final apiMessages = <Map<String, dynamic>>[];
-
-    for (final msg in messages) {
-      if (msg['role'] == 'user' &&
-          imageBase64 != null &&
-          msg == messages.last) {
-        apiMessages.add({
-          'role': 'user',
-          'content': [
-            {'type': 'text', 'text': msg['content']},
-            {
-              'type': 'image_url',
-              'image_url': {'url': 'data:image/jpeg;base64,$imageBase64'}
-            },
-          ],
-        });
-      } else {
-        apiMessages.add({'role': msg['role'], 'content': msg['content']});
-      }
-    }
-
-    final response = await _post(
-      Uri.parse('${AppConstants.nvidiaEndpoint}/chat/completions'),
-      headers: {
-        'Authorization': 'Bearer $_apiKey',
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode({
-        'model': _model,
-        'messages': apiMessages,
-        'temperature': temperature ?? AppConstants.defaultTemperature,
-        'max_tokens': maxTokens ?? AppConstants.defaultMaxTokens,
-      }),
-    );
-
-    if (response.statusCode != 200) {
-      return 'ERROR: NVIDIA NIM returned ${response.statusCode} — ${response.body}';
-    }
-
-    final data = jsonDecode(response.body);
-    return data['choices'][0]['message']['content'] ?? '';
-  }
-
   Future<String> _sendOpenRouter(
     List<Map<String, String>> messages,
     String? imageBase64,
@@ -485,26 +352,6 @@ class CloudService extends GetxService {
     return _sendOpenAICompatible(
       endpoint: '${AppConstants.openRouterEndpoint}/chat/completions',
       providerLabel: 'OpenRouter',
-      messages: messages,
-      imageBase64: imageBase64,
-      temperature: temperature,
-      maxTokens: maxTokens,
-      extraHeaders: const {
-        'HTTP-Referer': 'https://ai-chat.local',
-        'X-Title': 'AI Chat',
-      },
-    );
-  }
-
-  Future<String> _sendDeepSeek(
-    List<Map<String, String>> messages,
-    String? imageBase64,
-    double? temperature,
-    int? maxTokens,
-  ) async {
-    return _sendOpenAICompatible(
-      endpoint: '${AppConstants.deepSeekEndpoint}/chat/completions',
-      providerLabel: 'DeepSeek',
       messages: messages,
       imageBase64: imageBase64,
       temperature: temperature,

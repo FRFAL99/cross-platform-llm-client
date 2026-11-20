@@ -57,7 +57,8 @@ class UpdateService extends GetxService with WidgetsBindingObserver {
   final totalBytes = 0.obs;
   final lastError = ''.obs;
   final needsInstallPermission = false.obs;
-  final autoCheck = true.obs;
+  // Off by default: the app only contacts GitHub when the user asks.
+  final autoCheck = false.obs;
   final lastCheck = Rxn<DateTime>();
 
   int? _downloadId;
@@ -70,8 +71,8 @@ class UpdateService extends GetxService with WidgetsBindingObserver {
   void onInit() {
     super.onInit();
     autoCheck.value = _hive.getSetting<bool>(AppConstants.keyAutoUpdateCheck,
-            defaultValue: true) ??
-        true;
+            defaultValue: false) ??
+        false;
     final last = _hive.getSetting<int>(AppConstants.keyLastUpdateCheck);
     if (last != null) {
       lastCheck.value = DateTime.fromMillisecondsSinceEpoch(last);
