@@ -42,6 +42,8 @@ class AppConstants {
   static const String keyServerAllowNetwork = 'server_allow_network';
   static const String keyClusterEnabled = 'cluster_enabled';
   static const String keyClusterWorkers = 'cluster_workers';
+  /// Speed test history: list of BenchmarkResult maps, newest first.
+  static const String keyBenchmarkResults = 'benchmark_results';
   /// This phone's pairing code as a worker (secure storage).
   static const String keyClusterWorkerCode = 'cluster_worker_code';
   /// Master: pairing code of each worker, JSON {worker id or endpoint: code}

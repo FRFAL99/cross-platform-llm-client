@@ -1431,3 +1431,111 @@ Java_com_write4me_llama_1flutter_1android_LlamaFlutterAndroidPlugin_nativeSetSys
     // Currently not used but available for future smart context management
     LOGI("System prompt length set to: %d tokens (currently unused)", length);
 }
+
+// ---------------------------------------------------------------------------
+// Tools: speed benchmark and token counting (LlamaTools.kt)
+// ---------------------------------------------------------------------------
+
+/// Decodes `tokens` from position `start` in chunks of the context's batch
+/// size. Returns false on a decode error, a stop request or a lost worker.
+static bool benchDecode(const std::vector<llama_token>& tokens, int start, bool last_logits_only) {
+    const int n_batch = std::max(1, (int)llama_n_batch(g_ctx));
+    llama_batch batch = llama_batch_init(n_batch, 0, 1);
+    bool ok = true;
+    for (size_t i = 0; i < tokens.size() && ok; i += n_batch) {
+        const int n = std::min<int>(n_batch, (int)(tokens.size() - i));
+        batch.n_tokens = 0;
+        for (int j = 0; j < n; j++) {
+            batch.token[j] = tokens[i + j];
+            batch.pos[j] = start + (int)i + j;
+            batch.n_seq_id[j] = 1;
+            batch.seq_id[j][0] = 0;
+            batch.logits[j] = !last_logits_only || (i + j == tokens.size() - 1);
+        }
+        batch.n_tokens = n;
+        ok = llama_decode(g_ctx, batch) == 0 && !g_stop_flag && !g_cluster_lost;
+    }
+    llama_synchronize(g_ctx);
+    llama_batch_free(batch);
+    return ok;
+}
+
+static void benchClearCache() {
+    llama_memory_seq_rm(llama_get_memory(g_ctx), 0, 0, -1);
+    g_n_past = 0;
+    g_cached_tokens.clear();
+    g_cache_reusable = true;
+}
+
+/// Measures the loaded model's speed like llama-bench: prompt processing
+/// (`n_prompt` tokens in batches) and generation (`n_gen` tokens one at a
+/// time), each from an empty cache, with random tokens. Runs `reps` times
+/// and keeps the best. Returns [prompt tok/s, generation tok/s], or null if
+/// stopped. Clears the conversation cache.
+extern "C" JNIEXPORT jdoubleArray JNICALL
+Java_com_write4me_llama_1flutter_1android_LlamaTools_nativeBenchmark(
+        JNIEnv* env, jobject /* this */, jint n_prompt, jint n_gen, jint reps) {
+    if (!g_ctx || !g_model || !g_vocab) {
+        jclass exception = env->FindClass("java/lang/IllegalStateException");
+        env->ThrowNew(exception, "No model loaded");
+        return nullptr;
+    }
+    g_stop_flag = false;
+    const int n_ctx = llama_n_ctx(g_ctx);
+    const int pp = std::clamp((int)n_prompt, 1, std::max(1, n_ctx - 8));
+    const int tg = std::clamp((int)n_gen, 1, std::max(1, n_ctx - 8));
+    const int n_vocab = llama_vocab_n_tokens(g_vocab);
+    std::srand(1234);
+    auto randomTokens = [&](int n) {
+        std::vector<llama_token> t(n);
+        for (auto& tok : t) tok = std::rand() % n_vocab;
+        return t;
+    };
+    using clock = std::chrono::steady_clock;
+    auto seconds = [](clock::time_point a) {
+        return std::chrono::duration<double>(clock::now() - a).count();
+    };
+
+    // Warm up: first use pages in weights and builds compute graphs.
+    benchClearCache();
+    if (!benchDecode(randomTokens(std::min(pp, 32)), 0, true)) { benchClearCache(); return nullptr; }
+    benchClearCache();
+    if (!benchDecode(randomTokens(1), 0, true)) { benchClearCache(); return nullptr; }
+
+    double best_pp = 0, best_tg = 0;
+    for (int r = 0; r < std::max(1, (int)reps); r++) {
+        benchClearCache();
+        const auto prompt = randomTokens(pp);
+        auto t0 = clock::now();
+        if (!benchDecode(prompt, 0, true)) { benchClearCache(); return nullptr; }
+        best_pp = std::max(best_pp, pp / std::max(seconds(t0), 1e-9));
+
+        benchClearCache();
+        t0 = clock::now();
+        for (int i = 0; i < tg; i++) {
+            if (!benchDecode(randomTokens(1), i, true)) { benchClearCache(); return nullptr; }
+        }
+        best_tg = std::max(best_tg, tg / std::max(seconds(t0), 1e-9));
+    }
+    benchClearCache();
+    LOGI("Benchmark: pp%d %.1f tok/s, tg%d %.1f tok/s", pp, best_pp, tg, best_tg);
+    jdoubleArray out = env->NewDoubleArray(2);
+    const jdouble values[2] = {best_pp, best_tg};
+    env->SetDoubleArrayRegion(out, 0, 2, values);
+    return out;
+}
+
+/// Number of tokens the loaded model's tokenizer makes of `text` (no BOS).
+/// -1 when no model is loaded.
+extern "C" JNIEXPORT jint JNICALL
+Java_com_write4me_llama_1flutter_1android_LlamaTools_nativeCountTokens(
+        JNIEnv* env, jobject /* this */, jstring text) {
+    if (!g_vocab || !text) return -1;
+    const char* chars = env->GetStringUTFChars(text, nullptr);
+    if (!chars) return -1;
+    const std::string clean = sanitizeUTF8(chars, (int)std::strlen(chars));
+    env->ReleaseStringUTFChars(text, chars);
+    // A negative result is the number of tokens needed.
+    const int n = llama_tokenize(g_vocab, clean.c_str(), (int32_t)clean.size(), nullptr, 0, false, true);
+    return n < 0 ? -n : n;
+}

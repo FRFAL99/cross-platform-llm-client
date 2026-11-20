@@ -22,6 +22,7 @@ class LlamaFlutterAndroidPlugin : FlutterPlugin, LlamaHostApi, ActivityAware {
     private var currentModelPath: String? = null
     private var nativeLoadError: Throwable? = null
     private var clusterChannel: ClusterChannel? = null
+    private var toolsChannel: ToolsChannel? = null
 
     companion object {
         private const val TAG = "LlamaFlutterPlugin"
@@ -37,11 +38,14 @@ class LlamaFlutterAndroidPlugin : FlutterPlugin, LlamaHostApi, ActivityAware {
         flutterApi = LlamaFlutterApi(binding.binaryMessenger)
         LlamaHostApi.setUp(binding.binaryMessenger, this)
         clusterChannel = ClusterChannel(context, binding.binaryMessenger, scope)
+        toolsChannel = ToolsChannel(binding.binaryMessenger, scope)
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         clusterChannel?.dispose()
         clusterChannel = null
+        toolsChannel?.dispose()
+        toolsChannel = null
         scope.cancel()
         if (isModelLoaded.get()) {
             nativeFreeModel()
