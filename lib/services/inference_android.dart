@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ffi' show Abi;
 import 'dart:io' show Platform, File;
+import 'package:flutter/services.dart' show MissingPluginException;
 import 'package:llama_flutter_android/llama_flutter_android.dart';
 
 /// Whether the current platform supports local inference.
@@ -326,6 +327,28 @@ class InferenceEngine {
     return await completer.future;
   }
 
+  /// Speed of the loaded model ([prompt tok/s, generation tok/s]), or null
+  /// if stopped. Throws when this platform can't measure it.
+  Future<LlamaBenchmark?> benchmark({int prompt = 512, int gen = 128}) async {
+    if (_controller == null) throw Exception('No model loaded');
+    try {
+      return await LlamaTools.benchmark(prompt: prompt, gen: gen);
+    } on MissingPluginException {
+      throw Exception('The speed test is only available on Android.');
+    }
+  }
+
+  /// Token counts for [texts] with the loaded model's tokenizer; -1 where
+  /// unknown (no model, or a platform without token counting).
+  Future<List<int>> countTokens(List<String> texts) async {
+    if (_controller == null || texts.isEmpty) return List.filled(texts.length, -1);
+    try {
+      return await LlamaTools.countTokens(texts);
+    } catch (_) {
+      return List.filled(texts.length, -1);
+    }
+  }
+
   Future<void> stop() async {
     if (_disposed) return;
     _idleTimer?.cancel();
@@ -416,8 +439,10 @@ class InferenceEngine {
     messages.add(ChatMessage(role: 'system', content: systemPrompt));
 
     if (history != null && history.isNotEmpty) {
-      var recent = history.length > 16
-          ? history.sublist(history.length - 16)
+      // InferenceService already fitted the history to the context window
+      // by tokens; this cap only guards against pathological lists.
+      var recent = history.length > 400
+          ? history.sublist(history.length - 400)
           : List.of(history);
       if (recent.isNotEmpty &&
           recent.last['role'] == 'user' &&

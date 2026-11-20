@@ -30,6 +30,9 @@ If you installed the upstream PrivateLM before, uninstall it first: it uses the 
   - Workers paired with an older version show *Code* in the list: tap them and enter the code once. Workers must run this version too.
 - **API server** (Server tab): start it and point any OpenAI client at `http://<phone>:8080/v1`. Turn on network mode to reach it from other devices on the Wi-Fi; it then requires the API key shown in the app. The Server tab has copy-ready examples (curl, Python, JavaScript).
 
+- **Speed test** (Settings › Speed test): measures the loaded model on this phone or across the cluster, like llama-bench (pp512 prompt reading, tg128 generation), and keeps a history so you can compare models, quantizations and cluster setups.
+- **Long chats**: the oldest messages are left out, whole, when the conversation no longer fits in the context window (counted with the model's own tokenizer). The chat shows how many are out of memory. Raise *Context size* in Settings to keep more.
+
 ### API server
 
 | Endpoint | Notes |

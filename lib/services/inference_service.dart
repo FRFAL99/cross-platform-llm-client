@@ -5,8 +5,10 @@ import '../core/constants.dart';
 import 'device_info_service.dart';
 import 'app_log_service.dart';
 import 'cluster_service.dart';
+import 'context_window.dart';
 import 'stop_sequence_filter.dart';
 import '../core/ui.dart' show showToast, ToastTone;
+import '../models/benchmark_result.dart';
 
 // Conditionally import llama_flutter_android — only on Android
 import 'inference_android.dart' if (dart.library.html) 'inference_stub.dart'
@@ -53,6 +55,119 @@ class InferenceService extends GetxService {
   String _sessionNativeRuntime = '';
 
   String get sessionNativeRuntime => _sessionNativeRuntime;
+
+  /// The speed test is running (the model is busy meanwhile).
+  final isBenchmarking = false.obs;
+
+  /// Speed test history, newest first.
+  List<BenchmarkResult> get benchmarkResults => [
+        for (final raw in _hive.getSetting<List>(AppConstants.keyBenchmarkResults) ?? const [])
+          if (BenchmarkResult.fromMap(raw) case final r?) r,
+      ];
+
+  /// Measures the loaded model like llama-bench (read [promptTokens] in
+  /// batches, then generate [genTokens] one by one) and saves the result.
+  /// Uses the model exclusively: chat and server requests wait meanwhile.
+  /// Returns null if it was stopped.
+  Future<BenchmarkResult?> runBenchmark({int promptTokens = 512, int genTokens = 128}) async {
+    final engine = _engine;
+    if (engine == null || !isModelLoaded.value) {
+      throw Exception('Load a model first.');
+    }
+    if (isGenerating.value || isBenchmarking.value) {
+      throw Exception('The model is busy. Try again when it has finished.');
+    }
+    isBenchmarking.value = true;
+    isGenerating.value = true;
+    generationSource.value = 'benchmark';
+    try {
+      final speed = await engine.benchmark(prompt: promptTokens, gen: genTokens);
+      if (speed == null) return null;
+      final cluster = Get.isRegistered<ClusterService>() ? Get.find<ClusterService>() : null;
+      final where = cluster?.splitSummary ??
+          'This phone (${isGpuAccelerated.value ? 'GPU' : 'CPU'})';
+      final result = BenchmarkResult(
+        model: loadedModelName.value,
+        setup: where,
+        promptTps: speed.promptTokensPerSecond,
+        generationTps: speed.generationTokensPerSecond,
+        promptTokens: promptTokens,
+        generatedTokens: genTokens,
+        date: DateTime.now(),
+      );
+      final history = [result, ...benchmarkResults].take(30).map((r) => r.toMap()).toList();
+      await _hive.setSetting(AppConstants.keyBenchmarkResults, history);
+      Get.find<AppLogService>().info('Speed test: ${result.model} on ${result.setup}: '
+          'prompt ${result.promptTps.toStringAsFixed(1)} tok/s, '
+          'generation ${result.generationTps.toStringAsFixed(1)} tok/s');
+      return result;
+    } finally {
+      // The test empties the model's cache; the next chat turn refills it.
+      isBenchmarking.value = false;
+      isGenerating.value = false;
+      generationSource.value = '';
+    }
+  }
+
+  Future<void> clearBenchmarkResults() =>
+      _hive.setSetting(AppConstants.keyBenchmarkResults, const []);
+
+  /// Messages of the last request's history that didn't fit in the context
+  /// window and were left out (the oldest ones).
+  final droppedHistoryMessages = 0.obs;
+
+  /// Token counts by text, so each turn only counts its new messages.
+  final _tokenCounts = <String, int>{};
+
+  /// Keeps the most recent messages that fit in the context window next to
+  /// the system prompt, the new prompt and room for the reply, cutting
+  /// between messages (never inside one). The native side still trims the
+  /// middle of a prompt that is too long on its own.
+  Future<List<Map<String, String>>?> _fitHistory({
+    required String prompt,
+    required String systemPrompt,
+    required List<Map<String, String>>? history,
+    required int reserveTokens,
+  }) async {
+    droppedHistoryMessages.value = 0;
+    final ctx = contextTokensTotal.value;
+    if (history == null || history.isEmpty || ctx <= 0) return history;
+
+    final texts = [systemPrompt, prompt, for (final m in history) m['content'] ?? ''];
+    final counts = await _countTokens(texts);
+    final keepFrom = ContextWindow.firstToKeep(
+      history: history,
+      messageTokens: counts.sublist(2),
+      systemTokens: counts[0],
+      promptTokens: counts[1],
+      contextTokens: ctx,
+      reserveTokens: reserveTokens,
+    );
+    droppedHistoryMessages.value = keepFrom;
+    if (keepFrom > 0) {
+      Get.find<AppLogService>().info(
+          'Context: left out the $keepFrom oldest of ${history.length} messages');
+    }
+    return history.sublist(keepFrom);
+  }
+
+  /// Token counts from the model's tokenizer, cached; about 4 characters a
+  /// token where the tokenizer isn't available.
+  Future<List<int>> _countTokens(List<String> texts) async {
+    final missing = texts.where((t) => !_tokenCounts.containsKey(t)).toSet().toList();
+    if (missing.isNotEmpty) {
+      var counted = List<int>.filled(missing.length, -1);
+      try {
+        counted = await _engine?.countTokens(missing) ?? counted;
+      } catch (_) {}
+      if (_tokenCounts.length > 2000) _tokenCounts.clear();
+      for (var i = 0; i < missing.length; i++) {
+        final n = i < counted.length ? counted[i] : -1;
+        _tokenCounts[missing[i]] = n >= 0 ? n : (missing[i].length / 4).ceil();
+      }
+    }
+    return [for (final t in texts) _tokenCounts[t]!];
+  }
 
   /// What the last successful load used, to reload after a cluster worker
   /// drops out.
@@ -171,6 +286,7 @@ class InferenceService extends GetxService {
       contextTokensTotal.value = finalContextSize;
 
       _lastLoad = (path: modelPath, name: modelName, mmproj: mmprojPath);
+      _tokenCounts.clear();
       await _hive.setSetting(AppConstants.keyLocalModelPath, modelPath);
       await _hive.setSetting(
           AppConstants.keyLocalModelName, loadedModelName.value);
@@ -272,6 +388,11 @@ class InferenceService extends GetxService {
       return 'ERROR: No model loaded. Go to Models tab to download and load one.';
     }
 
+    // The speed test owns the model until it ends (stopping it midway
+    // would race with the native benchmark); wait instead.
+    while (isBenchmarking.value) {
+      await Future.delayed(const Duration(milliseconds: 200));
+    }
     if (isGenerating.value) {
       // Wait for previous generation
       for (int i = 0; i < 10; i++) {
@@ -325,9 +446,16 @@ class InferenceService extends GetxService {
           ? (maxTokens < settingMaxTokens ? maxTokens : settingMaxTokens)
           : settingMaxTokens;
 
+      final fittedHistory = await _fitHistory(
+        prompt: prompt,
+        systemPrompt: systemPrompt ?? AppConstants.systemPrompt,
+        history: conversationHistory,
+        reserveTokens: effectiveMaxTokens,
+      );
+
       final result = await _engine!.generate(
         prompt: prompt,
-        conversationHistory: conversationHistory,
+        conversationHistory: fittedHistory,
         systemPrompt: systemPrompt ?? AppConstants.systemPrompt,
         modelName: loadedModelName.value,
         maxTokens: effectiveMaxTokens,

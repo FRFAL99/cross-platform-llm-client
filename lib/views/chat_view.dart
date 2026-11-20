@@ -491,7 +491,8 @@ class ChatView extends GetView<ChatController> {
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                    '${inf.tokensPerSecond.value.toStringAsFixed(1)} tok/s',
+                    '${inf.tokensPerSecond.value.toStringAsFixed(1)} tok/s'
+                    '${inf.droppedHistoryMessages.value > 0 ? ' · ${inf.droppedHistoryMessages.value} older messages out of memory' : ''}',
                     style: TextStyle(
                         fontFamily: 'Inter',
                         fontSize: 12,

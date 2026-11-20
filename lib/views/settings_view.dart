@@ -7,6 +7,7 @@ import '../services/update_service.dart';
 import '../services/device_info_service.dart';
 import '../services/device_info_native.dart' as platform_info;
 import '../services/cluster_service.dart';
+import 'benchmark_view.dart';
 import 'cluster_view.dart';
 import 'log_view.dart';
 import '../core/haptics.dart';
@@ -104,6 +105,12 @@ class SettingsView extends GetView<SettingsController> {
                   chevron: true,
                   onTap: () => Get.to(() => const ClusterView()),
                 ),
+              AppRow(
+                icon: Icons.timer_outlined,
+                title: 'Speed test',
+                chevron: true,
+                onTap: () => Get.to(() => const BenchmarkView()),
+              ),
             ]),
             const SectionHeader('About'),
             AppGroup(dividerIndent: 60, children: [
