@@ -23,3 +23,6 @@ Future<String> downloadModel({
 void pauseDownload(String filename) {}
 
 Future<void> deleteModel(String path) async {}
+
+Future<String> sha256OfFile(String path) async =>
+    throw UnsupportedError('No model files on web');

@@ -973,14 +973,14 @@ class OpenAiServerService {
     return List.generate(12, (_) => rng.nextInt(16).toRadixString(16)).join();
   }
 
+  /// System prompt when the request brings none: the user's own prompt
+  /// from Settings, else the plain default. Unlike the chat, it doesn't
+  /// change with the model file's name (e.g. "uncensored"), so a client
+  /// gets the same behaviour from any model.
   String _defaultSystemPrompt(String modelName) {
     if (Get.isRegistered<SettingsController>()) {
-      return Get.find<SettingsController>().effectiveSystemPromptForModel(
-        modelName,
-      );
-    }
-    if (AppConstants.isUncensoredModelName(modelName)) {
-      return AppConstants.uncensoredSystemPrompt;
+      return Get.find<SettingsController>()
+          .effectiveSystemPromptForModel(modelName, forUncensored: false);
     }
     return AppConstants.systemPrompt;
   }

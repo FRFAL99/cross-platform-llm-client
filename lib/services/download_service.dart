@@ -6,6 +6,8 @@ import 'package:flutter/widgets.dart';
 import 'package:get/get.dart';
 import '../controllers/model_controller.dart';
 import '../core/ui.dart';
+import 'app_log_service.dart';
+import 'model_integrity.dart';
 import 'update_service.dart';
 
 import 'download_native.dart' if (dart.library.html) 'download_web.dart'
@@ -135,13 +137,15 @@ class DownloadService extends GetxService with WidgetsBindingObserver {
             }
 
             if (status == 'Download complete') {
-              activeDownloads.remove(filename);
               _nativeDownloadIds.remove(filename);
-              _nativeDownloadUrls.remove(filename);
-              // Trigger reload
-              try {
-                Get.find<ModelController>().refreshDownloaded();
-              } catch (_) {}
+              final url = _nativeDownloadUrls.remove(filename);
+              unawaited(() async {
+                await verifyDownload(filename, url: url, progress: progress);
+                activeDownloads.remove(filename);
+                try {
+                  await Get.find<ModelController>().refreshDownloaded();
+                } catch (_) {}
+              }());
             } else if (status == 'Download stalled') {
               // The system downloader never started (common on some OEM
               // ROMs); retry with the app's own resumable downloader.
@@ -323,12 +327,64 @@ class DownloadService extends GetxService with WidgetsBindingObserver {
           }
         },
       );
+      if (result != 'PAUSED') {
+        final check = await verifyDownload(filename,
+            url: url, progress: downloadProgress);
+        if (check == IntegrityResult.mismatch) {
+          activeDownloads.remove(filename);
+          throw Exception('The downloaded file does not match its published '
+              'checksum and was deleted. Try again.');
+        }
+      }
       activeDownloads.remove(filename);
       return result;
     } catch (e) {
       activeDownloads.remove(filename);
       rethrow;
     }
+  }
+
+  /// Checks the downloaded [filename] against its SHA-256 (pinned in the
+  /// catalogue, or published by Hugging Face for [url]). A file that
+  /// doesn't match is deleted and the user is told; one with no known hash
+  /// is kept and logged as unchecked.
+  Future<IntegrityResult> verifyDownload(String filename,
+      {String? url, DownloadProgress? progress}) async {
+    if (kIsWeb) return IntegrityResult.unchecked;
+    final log =
+        Get.isRegistered<AppLogService>() ? Get.find<AppLogService>() : null;
+    final source = url ?? ModelIntegrity.catalogueUrl(filename);
+    final expected = ModelIntegrity.pinnedSha256(filename) ??
+        (source == null ? null : await ModelIntegrity.remoteSha256(source));
+    if (expected == null) {
+      log?.warning('Download not verified: no SHA-256 published',
+          details: filename);
+      return IntegrityResult.unchecked;
+    }
+    progress?.status.value = 'Verifying…';
+    final path = await modelPath(filename);
+    final String actual;
+    try {
+      actual = await platform_dl.sha256OfFile(path);
+    } catch (e) {
+      log?.warning('Download not verified: could not read the file',
+          details: e);
+      return IntegrityResult.unchecked;
+    }
+    if (actual == expected) {
+      log?.info('Download verified (SHA-256): $filename');
+      return IntegrityResult.verified;
+    }
+    log?.error('Download checksum mismatch: $filename',
+        details: 'expected $expected, got $actual');
+    try {
+      await File(path).delete();
+    } catch (_) {}
+    _notifyFailure(
+        filename,
+        'The file does not match its published checksum and was deleted. '
+        'Try downloading it again.');
+    return IntegrityResult.mismatch;
   }
 
   Future<void> _directDownloadAfterStall(

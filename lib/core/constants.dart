@@ -30,6 +30,7 @@ class AppConstants {
   static const String keyMaxTokens = 'max_tokens';
   static const String keyContextSize = 'context_size';
   static const String keyHapticsEnabled = 'haptics_enabled';
+
   /// Summarize chat messages that no longer fit in the context window.
   static const String keySummarizeHistory = 'summarize_history';
   static const String keyAutoUpdateCheck = 'auto_update_check';
@@ -44,13 +45,17 @@ class AppConstants {
   static const String keyServerAllowNetwork = 'server_allow_network';
   static const String keyClusterEnabled = 'cluster_enabled';
   static const String keyClusterWorkers = 'cluster_workers';
+
   /// Speed test history: list of BenchmarkResult maps, newest first.
   static const String keyBenchmarkResults = 'benchmark_results';
+
   /// This phone's pairing code as a worker (secure storage).
   static const String keyClusterWorkerCode = 'cluster_worker_code';
+
   /// Master: pairing code of each worker, JSON {worker id or endpoint: code}
   /// (secure storage).
   static const String keyClusterPairingCodes = 'cluster_pairing_codes';
+
   /// Prefix of the native generation error when a cluster worker drops.
   static const String clusterWorkerLostError = 'CLUSTER_WORKER_LOST:';
   static const String keyFontScale = 'font_scale';
@@ -66,11 +71,23 @@ class AppConstants {
 
   // System Prompt (compact for small context models)
   static const String systemPrompt =
-      '''You are AI Chat, a helpful and friendly assistant. Be concise, accurate, and conversational. Answer questions directly without unnecessary preamble.''';
+      '''You are PrivateLM, a helpful and friendly assistant. Be concise, accurate, and conversational. Answer questions directly without unnecessary preamble.''';
 
   // System Prompt for Uncensored Models
   static const String uncensoredSystemPrompt =
-      '''You are AI Chat running with an uncensored local model. Be direct, mature, and conversational. Avoid moralizing or unnecessary disclaimers, but keep answers accurate and do not help with real-world harm, abuse, or illegal activity.''';
+      '''You are PrivateLM running with an uncensored local model. Be direct, mature, and conversational. Avoid moralizing or unnecessary disclaimers, but keep answers accurate and do not help with real-world harm, abuse, or illegal activity.''';
+
+  /// Default system prompts of older versions, still stored in some
+  /// settings: treated as the default, not as a custom prompt.
+  static const legacySystemPrompts = {
+    '''You are AI Chat, a helpful and friendly assistant. Be concise, accurate, and conversational. Answer questions directly without unnecessary preamble.''',
+  };
+
+  /// [prompt] is the default system prompt (now or in an older version).
+  static bool isDefaultSystemPrompt(String prompt) {
+    final p = prompt.trim();
+    return p.isEmpty || p == systemPrompt || legacySystemPrompts.contains(p);
+  }
 
   static bool isUncensoredModelName(String value) {
     final lower = value.toLowerCase();
