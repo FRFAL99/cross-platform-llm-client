@@ -54,10 +54,14 @@ class InferenceEngine {
     String? imagePath,
     String? audioPath,
     String source = 'chat',
+    String? grammar,
+    String? grammarTrigger,
     void Function(String token)? onToken,
   }) async {
     return 'ERROR: Local inference is not available on this platform.';
   }
+
+  int get lastCompletionTokens => 0;
 
   Future<Never> benchmark({int prompt = 512, int gen = 128}) async =>
       throw Exception('Local inference is not available on this platform.');

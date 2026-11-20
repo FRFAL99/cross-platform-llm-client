@@ -165,7 +165,9 @@ class LlamaFlutterAndroidPlugin : FlutterPlugin, LlamaHostApi, ActivityAware {
                     request.mirostatTau,
                     request.mirostatEta,
                     request.seed ?: -1L,  // Use -1 for random seed
-                    request.penalizeNewline
+                    request.penalizeNewline,
+                    null,
+                    null
                 ) { token ->
                     if (!isStopping.get()) {
                         scope.launch {
@@ -297,7 +299,9 @@ class LlamaFlutterAndroidPlugin : FlutterPlugin, LlamaHostApi, ActivityAware {
                     request.mirostatTau.toDouble(),
                     request.mirostatEta.toDouble(),
                     request.seed ?: -1L,  // Use -1 for random seed
-                    request.penalizeNewline
+                    request.penalizeNewline,
+                    request.grammar,
+                    request.grammarTrigger
                 ) { token ->
                     if (!isStopping.get()) {
                         scope.launch {
@@ -562,6 +566,8 @@ class LlamaFlutterAndroidPlugin : FlutterPlugin, LlamaHostApi, ActivityAware {
         mirostatEta: Double,
         seed: Long,
         penalizeNewline: Boolean,
+        grammar: String?,
+        grammarTrigger: String?,
         tokenCallback: (String) -> Unit
     )
 

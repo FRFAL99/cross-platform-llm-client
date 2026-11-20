@@ -226,6 +226,8 @@ class ChatRequest {
     required this.mirostatEta,
     this.seed,
     required this.penalizeNewline,
+    this.grammar,
+    this.grammarTrigger,
   });
 
   /// Conversation history including system, user, and assistant messages.
@@ -265,6 +267,12 @@ class ChatRequest {
 
   bool penalizeNewline;
 
+  /// GBNF grammar the output must follow (root rule `root`). Null = free text.
+  String? grammar;
+
+  /// Regex that starts the grammar (lazy grammar). Null = from the first token.
+  String? grammarTrigger;
+
   Object encode() {
     return <Object?>[
       messages,
@@ -284,6 +292,8 @@ class ChatRequest {
       mirostatEta,
       seed,
       penalizeNewline,
+      grammar,
+      grammarTrigger,
     ];
   }
 
@@ -307,6 +317,8 @@ class ChatRequest {
       mirostatEta: result[14]! as double,
       seed: result[15] as int?,
       penalizeNewline: result[16]! as bool,
+      grammar: result.length > 17 ? result[17] as String? : null,
+      grammarTrigger: result.length > 18 ? result[18] as String? : null,
     );
   }
 }

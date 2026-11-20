@@ -213,7 +213,11 @@ data class ChatRequest (
   val mirostatTau: Double,
   val mirostatEta: Double,
   val seed: Long? = null,
-  val penalizeNewline: Boolean
+  val penalizeNewline: Boolean,
+  /** GBNF grammar the output must follow (root rule "root"). Null = free text. */
+  val grammar: String? = null,
+  /** Regex that starts the grammar (lazy grammar). Null = from the first token. */
+  val grammarTrigger: String? = null
 )
  {
   companion object {
@@ -235,7 +239,9 @@ data class ChatRequest (
       val mirostatEta = pigeonVar_list[14] as Double
       val seed = pigeonVar_list[15] as Long?
       val penalizeNewline = pigeonVar_list[16] as Boolean
-      return ChatRequest(messages, template, maxTokens, temperature, topP, topK, minP, typicalP, repeatPenalty, frequencyPenalty, presencePenalty, repeatLastN, mirostat, mirostatTau, mirostatEta, seed, penalizeNewline)
+      val grammar = pigeonVar_list.getOrNull(17) as String?
+      val grammarTrigger = pigeonVar_list.getOrNull(18) as String?
+      return ChatRequest(messages, template, maxTokens, temperature, topP, topK, minP, typicalP, repeatPenalty, frequencyPenalty, presencePenalty, repeatLastN, mirostat, mirostatTau, mirostatEta, seed, penalizeNewline, grammar, grammarTrigger)
     }
   }
   fun toList(): List<Any?> {
@@ -257,6 +263,8 @@ data class ChatRequest (
       mirostatEta,
       seed,
       penalizeNewline,
+      grammar,
+      grammarTrigger,
     )
   }
 }

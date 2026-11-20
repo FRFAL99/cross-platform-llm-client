@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' show max;
 import 'package:get/get.dart';
 import 'hive_service.dart';
 import '../core/constants.dart';
@@ -42,6 +43,10 @@ class InferenceService extends GetxService {
   /// newer generation, or a disconnecting server client). Callers compare it
   /// before/after generate() to detect that their result was cut short.
   int get stopCount => _stopCount;
+
+  /// Token counts of the last finished generation, for the API's `usage`.
+  /// Null while generating or when it failed.
+  GenerationUsage? lastUsage;
   int _stopCount = 0;
   final isGpuAccelerated = false.obs;
   final loadedModelRuntime = ''.obs;
@@ -61,7 +66,9 @@ class InferenceService extends GetxService {
 
   /// Speed test history, newest first.
   List<BenchmarkResult> get benchmarkResults => [
-        for (final raw in _hive.getSetting<List>(AppConstants.keyBenchmarkResults) ?? const [])
+        for (final raw
+            in _hive.getSetting<List>(AppConstants.keyBenchmarkResults) ??
+                const [])
           if (BenchmarkResult.fromMap(raw) case final r?) r,
       ];
 
@@ -69,7 +76,8 @@ class InferenceService extends GetxService {
   /// batches, then generate [genTokens] one by one) and saves the result.
   /// Uses the model exclusively: chat and server requests wait meanwhile.
   /// Returns null if it was stopped.
-  Future<BenchmarkResult?> runBenchmark({int promptTokens = 512, int genTokens = 128}) async {
+  Future<BenchmarkResult?> runBenchmark(
+      {int promptTokens = 512, int genTokens = 128}) async {
     final engine = _engine;
     if (engine == null || !isModelLoaded.value) {
       throw Exception('Load a model first.');
@@ -81,9 +89,12 @@ class InferenceService extends GetxService {
     isGenerating.value = true;
     generationSource.value = 'benchmark';
     try {
-      final speed = await engine.benchmark(prompt: promptTokens, gen: genTokens);
+      final speed =
+          await engine.benchmark(prompt: promptTokens, gen: genTokens);
       if (speed == null) return null;
-      final cluster = Get.isRegistered<ClusterService>() ? Get.find<ClusterService>() : null;
+      final cluster = Get.isRegistered<ClusterService>()
+          ? Get.find<ClusterService>()
+          : null;
       final where = cluster?.splitSummary ??
           'This phone (${isGpuAccelerated.value ? 'GPU' : 'CPU'})';
       final result = BenchmarkResult(
@@ -95,11 +106,13 @@ class InferenceService extends GetxService {
         generatedTokens: genTokens,
         date: DateTime.now(),
       );
-      final history = [result, ...benchmarkResults].take(30).map((r) => r.toMap()).toList();
+      final history =
+          [result, ...benchmarkResults].take(30).map((r) => r.toMap()).toList();
       await _hive.setSetting(AppConstants.keyBenchmarkResults, history);
-      Get.find<AppLogService>().info('Speed test: ${result.model} on ${result.setup}: '
-          'prompt ${result.promptTps.toStringAsFixed(1)} tok/s, '
-          'generation ${result.generationTps.toStringAsFixed(1)} tok/s');
+      Get.find<AppLogService>()
+          .info('Speed test: ${result.model} on ${result.setup}: '
+              'prompt ${result.promptTps.toStringAsFixed(1)} tok/s, '
+              'generation ${result.generationTps.toStringAsFixed(1)} tok/s');
       return result;
     } finally {
       // The test empties the model's cache; the next chat turn refills it.
@@ -133,7 +146,11 @@ class InferenceService extends GetxService {
     final ctx = contextTokensTotal.value;
     if (history == null || history.isEmpty || ctx <= 0) return history;
 
-    final texts = [systemPrompt, prompt, for (final m in history) m['content'] ?? ''];
+    final texts = [
+      systemPrompt,
+      prompt,
+      for (final m in history) m['content'] ?? ''
+    ];
     final counts = await _countTokens(texts);
     final keepFrom = ContextWindow.firstToKeep(
       history: history,
@@ -154,7 +171,8 @@ class InferenceService extends GetxService {
   /// Token counts from the model's tokenizer, cached; about 4 characters a
   /// token where the tokenizer isn't available.
   Future<List<int>> _countTokens(List<String> texts) async {
-    final missing = texts.where((t) => !_tokenCounts.containsKey(t)).toSet().toList();
+    final missing =
+        texts.where((t) => !_tokenCounts.containsKey(t)).toSet().toList();
     if (missing.isNotEmpty) {
       var counted = List<int>.filled(missing.length, -1);
       try {
@@ -315,14 +333,16 @@ class InferenceService extends GetxService {
   /// A worker stopped answering mid-answer: the model is missing its layers,
   /// so reload it (the cluster plan leaves out workers that don't answer).
   String _onClusterWorkerLost(String error) {
-    final endpoint = RegExp('${AppConstants.clusterWorkerLostError}([0-9A-Za-z.:\\-]+)')
-            .firstMatch(error)
-            ?.group(1) ??
-        'a worker';
+    final endpoint =
+        RegExp('${AppConstants.clusterWorkerLostError}([0-9A-Za-z.:\\-]+)')
+                .firstMatch(error)
+                ?.group(1) ??
+            'a worker';
     final name = Get.isRegistered<ClusterService>()
         ? Get.find<ClusterService>().nameFor(endpoint)
         : endpoint;
-    Get.find<AppLogService>().error('Phone cluster worker lost', details: endpoint);
+    Get.find<AppLogService>()
+        .error('Phone cluster worker lost', details: endpoint);
     unawaited(_recoverFromLostWorker(name));
     return 'ERROR: The phone cluster lost $name in the middle of this answer. '
         'Reloading the model without it; try again in a moment.';
@@ -333,9 +353,11 @@ class InferenceService extends GetxService {
     if (_recoveringCluster || last == null) return;
     _recoveringCluster = true;
     try {
-      showToast('Phone cluster', '$name stopped answering. Reloading the model…',
+      showToast(
+          'Phone cluster', '$name stopped answering. Reloading the model…',
           tone: ToastTone.warning);
-      final message = await loadModel(last.path, modelName: last.name, mmprojPath: last.mmproj);
+      final message = await loadModel(last.path,
+          modelName: last.name, mmprojPath: last.mmproj);
       if (message.startsWith('ERROR')) {
         showToast('Model not reloaded', message.replaceFirst('ERROR: ', ''),
             tone: ToastTone.error);
@@ -382,8 +404,11 @@ class InferenceService extends GetxService {
     List<String> stopSequences = const [],
     double? temperature,
     double? topP,
+    String? grammar,
+    String? grammarTrigger,
     void Function(String token)? onToken,
   }) async {
+    lastUsage = null;
     if (!supportsLocalInference || _engine == null || !isModelLoaded.value) {
       return 'ERROR: No model loaded. Go to Models tab to download and load one.';
     }
@@ -464,6 +489,8 @@ class InferenceService extends GetxService {
         imagePath: imagePath,
         audioPath: audioPath,
         source: source,
+        grammar: grammar,
+        grammarTrigger: grammarTrigger,
         onToken: (rawToken) {
           if (!isCurrent()) return;
           var token = rawToken;
@@ -503,6 +530,12 @@ class InferenceService extends GetxService {
 
       await refreshContextInfo();
       if (isCurrent()) {
+        // The context now holds the whole prompt plus the reply.
+        final completion = _engine!.lastCompletionTokens;
+        lastUsage = GenerationUsage(
+          promptTokens: max(0, contextTokensUsed.value - completion),
+          completionTokens: completion,
+        );
         isGenerating.value = false;
         generationSource.value = '';
       }
@@ -631,4 +664,20 @@ class InferenceService extends GetxService {
     final normalized = progress > 1 ? progress / 100 : progress;
     return normalized.clamp(0.0, 1.0).toDouble();
   }
+}
+
+/// Tokens read and written by one generation.
+class GenerationUsage {
+  final int promptTokens;
+  final int completionTokens;
+  const GenerationUsage(
+      {required this.promptTokens, required this.completionTokens});
+
+  int get totalTokens => promptTokens + completionTokens;
+
+  Map<String, int> toJson() => {
+        'prompt_tokens': promptTokens,
+        'completion_tokens': completionTokens,
+        'total_tokens': totalTokens,
+      };
 }

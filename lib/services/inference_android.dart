@@ -199,9 +199,12 @@ class InferenceEngine {
     String? imagePath,
     String? audioPath,
     String source = 'chat',
+    String? grammar,
+    String? grammarTrigger,
     void Function(String token)? onToken,
   }) async {
     if (_controller == null) throw Exception('No model loaded');
+    lastCompletionTokens = 0;
     if (imagePath != null && imagePath.isNotEmpty && !_ggufVisionLoaded) {
       return 'This model can\'t read images. Load a vision model (one marked '
           'Vision in Models) to ask about photos.';
@@ -254,6 +257,8 @@ class InferenceEngine {
         minP: 0.05,
         repeatPenalty: 1.1,
         repeatLastN: 64,
+        grammar: grammar,
+        grammarTrigger: grammarTrigger,
       );
       print('[Inference] generateChat() started (${messages.length} messages)');
     } catch (e) {
@@ -279,6 +284,7 @@ class InferenceEngine {
     int tokenCount = 0;
     _subscription = stream.listen(
       (token) {
+        lastCompletionTokens++;
         if (tokenCount == 0) {
           print('[Inference] ✓ FIRST TOKEN received! Prefill done.');
         }
@@ -327,6 +333,10 @@ class InferenceEngine {
     return await completer.future;
   }
 
+  /// Tokens the model produced in the last generation (one stream event
+  /// per native token, including ones that print nothing).
+  int lastCompletionTokens = 0;
+
   /// Speed of the loaded model ([prompt tok/s, generation tok/s]), or null
   /// if stopped. Throws when this platform can't measure it.
   Future<LlamaBenchmark?> benchmark({int prompt = 512, int gen = 128}) async {
@@ -341,7 +351,9 @@ class InferenceEngine {
   /// Token counts for [texts] with the loaded model's tokenizer; -1 where
   /// unknown (no model, or a platform without token counting).
   Future<List<int>> countTokens(List<String> texts) async {
-    if (_controller == null || texts.isEmpty) return List.filled(texts.length, -1);
+    if (_controller == null || texts.isEmpty) {
+      return List.filled(texts.length, -1);
+    }
     try {
       return await LlamaTools.countTokens(texts);
     } catch (_) {

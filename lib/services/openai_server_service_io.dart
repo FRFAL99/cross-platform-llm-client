@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 import '../controllers/settings_controller.dart';
 import '../core/constants.dart';
 import 'inference_service.dart';
+import 'server/json_grammar.dart';
 import 'server/tool_calling.dart';
 
 class OpenAiServerService {
@@ -254,13 +255,17 @@ class OpenAiServerService {
           stopSequences: sampling.stop,
           temperature: sampling.temperature,
           topP: sampling.topP,
+          grammar: parsed.grammar,
+          grammarTrigger: parsed.grammarTrigger,
         );
         if (inference.stopCount != stopsBefore) {
           await _interrupted(request);
           return;
         }
-        await _json(request,
-            _chatResponse(inference.loadedModelName.value, text, parsed));
+        await _json(
+            request,
+            _chatResponse(inference.loadedModelName.value, text, parsed,
+                inference.lastUsage));
       }
     } finally {
       _busy = false;
@@ -356,6 +361,8 @@ class OpenAiServerService {
       stop: _stop(body),
       temperature: (temperature as num?)?.toDouble(),
       topP: (topP as num?)?.toDouble(),
+      includeUsage: body['stream_options'] is Map &&
+          (body['stream_options'] as Map)['include_usage'] == true,
     );
   }
 
@@ -421,6 +428,7 @@ class OpenAiServerService {
           'choices': [
             {'index': 0, 'text': text, 'finish_reason': 'stop'}
           ],
+          'usage': _usage(inference.lastUsage),
         });
       }
     } finally {
@@ -456,6 +464,7 @@ class OpenAiServerService {
     if (jsonInstruction is _Invalid) {
       return _ParsedChatRequest.error(jsonInstruction.message);
     }
+    final grammar = _grammar(tools, toolChoice, body['response_format']);
 
     final systemParts = <String>[];
     final history = <Map<String, String>>[];
@@ -523,11 +532,48 @@ class OpenAiServerService {
       tools: tools,
       toolChoice: toolChoice,
       jsonInstruction: jsonInstruction as String?,
+      grammar: grammar?.gbnf,
+      grammarTrigger: grammar?.trigger,
     );
   }
 
-  /// OpenAI `response_format`: JSON mode and JSON schema become instructions
-  /// for the model (llama.cpp grammars are not wired up here).
+  /// The llama.cpp grammar that makes the model's output valid: tool calls
+  /// whose arguments match the tool's parameters (from the first token when
+  /// a call is required, from `<tool_call>` on with `auto`), or JSON for
+  /// `response_format`. A schema the converter can't read falls back to
+  /// the prompt instructions alone.
+  ({String gbnf, String? trigger})? _grammar(
+      List<ToolSpec> tools, ToolChoice choice, dynamic format) {
+    try {
+      if (tools.isNotEmpty && !choice.disabled) {
+        return (
+          gbnf: JsonGrammar.toolCalls(tools, only: choice.function),
+          trigger: choice.mode == 'auto' ? JsonGrammar.toolCallTrigger : null,
+        );
+      }
+      if (format is Map && format['type'] == 'json_object') {
+        return (gbnf: JsonGrammar.anyObject(), trigger: null);
+      }
+      if (format is Map && format['type'] == 'json_schema') {
+        final spec = format['json_schema'];
+        final schema = spec is Map ? spec['schema'] : null;
+        if (schema is Map) {
+          return (
+            gbnf: JsonGrammar.forSchema(Map<String, dynamic>.from(schema)),
+            trigger: null,
+          );
+        }
+      }
+    } on FormatException catch (e) {
+      _onLog?.call('Output not constrained (${e.message}); '
+          'relying on instructions');
+    }
+    return null;
+  }
+
+  /// OpenAI `response_format`: JSON mode and JSON schema are described to
+  /// the model too, so it knows what to write; the grammar from [_grammar]
+  /// is what guarantees it.
   Object? _jsonInstruction(dynamic format) {
     if (format == null) return null;
     if (format is! Map) {
@@ -701,6 +747,8 @@ class OpenAiServerService {
       stopSequences: sampling.stop,
       temperature: sampling.temperature,
       topP: sampling.topP,
+      grammar: parsed.grammar,
+      grammarTrigger: parsed.grammarTrigger,
       onToken: emit,
     );
 
@@ -730,9 +778,24 @@ class OpenAiServerService {
       chunk({'content': result});
     }
     chunk({}, finishReason: finishReason);
+    if (sampling.includeUsage) {
+      sse.event({
+        'id': id,
+        'object': 'chat.completion.chunk',
+        'created': created,
+        'model': model,
+        'choices': const [],
+        'usage': _usage(inference.lastUsage),
+      });
+    }
     sse.raw('data: [DONE]\n\n');
     await sse.close();
   }
+
+  /// OpenAI `usage`; zeros when the engine couldn't count.
+  static Map<String, int> _usage(GenerationUsage? usage) =>
+      (usage ?? const GenerationUsage(promptTokens: 0, completionTokens: 0))
+          .toJson();
 
   /// Reports an interruption as an error event rather than a normal [DONE],
   /// so clients don't mistake a partial answer for a complete one.
@@ -796,12 +859,22 @@ class OpenAiServerService {
     }
     if (!emitted && result.isNotEmpty) chunk(result);
     chunk('', finishReason: 'stop');
+    if (sampling.includeUsage) {
+      sse.event({
+        'id': id,
+        'object': 'text_completion',
+        'created': created,
+        'model': model,
+        'choices': const [],
+        'usage': _usage(inference.lastUsage),
+      });
+    }
     sse.raw('data: [DONE]\n\n');
     await sse.close();
   }
 
-  Map<String, dynamic> _chatResponse(
-      String model, String text, _ParsedChatRequest parsed) {
+  Map<String, dynamic> _chatResponse(String model, String text,
+      _ParsedChatRequest parsed, GenerationUsage? usage) {
     if (parsed.jsonInstruction != null) text = _stripCodeFence(text);
     var message = <String, dynamic>{'role': 'assistant', 'content': text};
     var finishReason = 'stop';
@@ -828,6 +901,7 @@ class OpenAiServerService {
           'finish_reason': finishReason,
         }
       ],
+      'usage': _usage(usage),
     };
   }
 
@@ -986,6 +1060,12 @@ class _ParsedChatRequest {
   final List<ToolSpec> tools;
   final ToolChoice toolChoice;
   final String? jsonInstruction;
+
+  /// GBNF grammar that forces valid JSON or tool calls (null: free text).
+  final String? grammar;
+
+  /// Set when [grammar] only starts once the model opens a tool call.
+  final String? grammarTrigger;
   final String? error;
 
   _ParsedChatRequest({
@@ -997,6 +1077,8 @@ class _ParsedChatRequest {
     this.tools = const [],
     this.toolChoice = ToolChoice.auto,
     this.jsonInstruction,
+    this.grammar,
+    this.grammarTrigger,
   }) : error = null;
 
   _ParsedChatRequest.error(this.error)
@@ -1007,7 +1089,9 @@ class _ParsedChatRequest {
         audioPath = null,
         tools = const [],
         toolChoice = ToolChoice.auto,
-        jsonInstruction = null;
+        jsonInstruction = null,
+        grammar = null,
+        grammarTrigger = null;
 
   /// Whether the reply should be parsed for tool calls.
   bool get usesTools => tools.isNotEmpty && !toolChoice.disabled;
@@ -1020,6 +1104,9 @@ class _Sampling {
   final List<String> stop;
   final double? temperature;
   final double? topP;
+
+  /// `stream_options.include_usage`: end the stream with a usage chunk.
+  final bool includeUsage;
   final String? error;
 
   const _Sampling({
@@ -1027,13 +1114,15 @@ class _Sampling {
     required this.stop,
     required this.temperature,
     required this.topP,
+    this.includeUsage = false,
   }) : error = null;
 
   const _Sampling.error(this.error)
       : maxTokens = null,
         stop = const [],
         temperature = null,
-        topP = null;
+        topP = null,
+        includeUsage = false;
 }
 
 class _Invalid {
