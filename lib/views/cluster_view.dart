@@ -206,8 +206,8 @@ class _ClusterViewState extends State<ClusterView> {
           : 'Keep this phone plugged in and on the same Wi-Fi, with PrivateLM '
               'open: the screen stays on while sharing, because Android slows '
               'background work. Set Phone cluster to Off to stop. Only a master '
-              'that knows the pairing code can use this phone; data between the '
-              'phones is not encrypted, so use a network you trust.'),
+              'that knows the pairing code can use this phone, and everything '
+              'between the phones is encrypted.'),
     ];
   }
 

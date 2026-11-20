@@ -25,6 +25,10 @@ struct socket_t {
     // PrivateLM patch: receive timeout in ms (0: none). TCP only.
     void set_recv_timeout(int ms);
 
+    // PrivateLM patch: from now on, send and receive ChaCha20-Poly1305
+    // records with these keys (from the pairing handshake).
+    void enable_encryption(const uint8_t send_key[32], const uint8_t recv_key[32]);
+
     void get_caps(uint8_t * local_caps);
     void update_caps(const uint8_t * remote_caps);
 

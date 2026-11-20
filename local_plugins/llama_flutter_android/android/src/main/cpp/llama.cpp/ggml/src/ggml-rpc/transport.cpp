@@ -1,5 +1,6 @@
 #include "transport.h"
 #include "ggml-impl.h"
+#include "privatelm-crypto.h"
 
 #ifdef _WIN32
 #  define WIN32_LEAN_AND_MEAN
@@ -21,6 +22,7 @@
 #include <cstring>
 #include <mutex>
 #include <optional>
+#include <vector>
 
 #ifdef GGML_RPC_RDMA
 #  include <infiniband/verbs.h>
@@ -121,12 +123,47 @@ static_assert(sizeof(rdma_caps) == RPC_CONN_CAPS_SIZE, "rdma_caps must match con
 
 #endif // GGML_RPC_RDMA && !GGML_RPC_RDMA_APPLE
 
+// PrivateLM patch: after the pairing handshake every byte travels in
+// ChaCha20-Poly1305 records: | length (4, LE, also the AAD) | ciphertext |
+// tag (16) |, at most SECURE_RECORD plaintext bytes each, nonce = 4 zero
+// bytes | per-direction record counter (8, LE). Writes collect into the
+// current record, which is sealed when full or at flush(); reads decrypt
+// one record at a time. A record that fails its tag ends the connection.
+static constexpr size_t SECURE_RECORD = 64 * 1024;
+
+struct secure_channel {
+    uint8_t  send_key[32];
+    uint8_t  recv_key[32];
+    uint64_t send_seq = 0;
+    uint64_t recv_seq = 0;
+    std::vector<uint8_t> tx = std::vector<uint8_t>(4 + SECURE_RECORD + privatelm_crypto::kTagSize);
+    size_t   tx_len = 0;  // plaintext bytes waiting in tx
+    std::vector<uint8_t> rx = std::vector<uint8_t>(SECURE_RECORD + privatelm_crypto::kTagSize);
+    size_t   rx_len = 0;
+    size_t   rx_pos = 0;
+
+    ~secure_channel() {
+        privatelm_crypto::wipe(send_key, sizeof(send_key));
+        privatelm_crypto::wipe(recv_key, sizeof(recv_key));
+    }
+
+    static void nonce_for(uint64_t seq, uint8_t nonce[12]) {
+        std::memset(nonce, 0, 4);
+        privatelm_crypto::store64(nonce + 4, seq);
+    }
+};
+
 struct socket_t::impl {
     impl(sockfd_t fd) : use_rdma(false), fd(fd) {}
     ~impl();
     bool send_data(const void * data, size_t size);
     bool recv_data(void * data, size_t size);
     bool flush();
+    bool raw_send(const void * data, size_t size);
+    bool raw_recv(void * data, size_t size);
+    bool seal_record();
+    bool open_record();
+    std::unique_ptr<secure_channel> sec;
     void get_caps(uint8_t * local_caps);
     void update_caps(const uint8_t * remote_caps);
 
@@ -478,6 +515,63 @@ bool socket_t::impl::rdma_recv(void * data, size_t size) {
 #endif // GGML_RPC_RDMA
 
 bool socket_t::impl::send_data(const void * data, size_t size) {
+    if (!sec) {
+        return raw_send(data, size);
+    }
+    const uint8_t * p = (const uint8_t *)data;
+    while (size > 0) {
+        const size_t take = std::min(size, SECURE_RECORD - sec->tx_len);
+        std::memcpy(sec->tx.data() + 4 + sec->tx_len, p, take);
+        sec->tx_len += take;
+        p += take;
+        size -= take;
+        if (sec->tx_len == SECURE_RECORD && !seal_record()) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool socket_t::impl::seal_record() {
+    const size_t n = sec->tx_len;
+    if (n == 0) {
+        return true;
+    }
+    uint8_t * rec = sec->tx.data();
+    privatelm_crypto::store32(rec, (uint32_t)n);
+    uint8_t nonce[12];
+    secure_channel::nonce_for(sec->send_seq++, nonce);
+    privatelm_crypto::aead_seal(sec->send_key, nonce, rec, 4, rec + 4, n, rec + 4 + n);
+    sec->tx_len = 0;
+    return raw_send(rec, 4 + n + privatelm_crypto::kTagSize);
+}
+
+bool socket_t::impl::open_record() {
+    uint8_t header[4];
+    if (!raw_recv(header, sizeof(header))) {
+        return false;
+    }
+    const uint32_t n = privatelm_crypto::load32(header);
+    if (n == 0 || n > SECURE_RECORD) {
+        GGML_LOG_ERROR("RPC: bad encrypted record size %u\n", n);
+        return false;
+    }
+    uint8_t * body = sec->rx.data();
+    if (!raw_recv(body, n + privatelm_crypto::kTagSize)) {
+        return false;
+    }
+    uint8_t nonce[12];
+    secure_channel::nonce_for(sec->recv_seq++, nonce);
+    if (!privatelm_crypto::aead_open(sec->recv_key, nonce, header, 4, body, n, body + n)) {
+        GGML_LOG_ERROR("RPC: rejected a cluster record that failed authentication\n");
+        return false;
+    }
+    sec->rx_len = n;
+    sec->rx_pos = 0;
+    return true;
+}
+
+bool socket_t::impl::raw_send(const void * data, size_t size) {
 #ifdef GGML_RPC_RDMA_APPLE
     if (use_rdma) {
         return rdma->send(data, size);
@@ -508,6 +602,28 @@ bool socket_t::impl::send_data(const void * data, size_t size) {
 }
 
 bool socket_t::impl::recv_data(void * data, size_t size) {
+    if (!sec) {
+        return raw_recv(data, size);
+    }
+    uint8_t * p = (uint8_t *)data;
+    while (size > 0) {
+        if (sec->rx_pos == sec->rx_len) {
+            // About to wait for the peer: anything still collected must go
+            // out first, or both sides would wait forever.
+            if (!seal_record() || !open_record()) {
+                return false;
+            }
+        }
+        const size_t take = std::min(size, sec->rx_len - sec->rx_pos);
+        std::memcpy(p, sec->rx.data() + sec->rx_pos, take);
+        sec->rx_pos += take;
+        p += take;
+        size -= take;
+    }
+    return true;
+}
+
+bool socket_t::impl::raw_recv(void * data, size_t size) {
 #ifdef GGML_RPC_RDMA_APPLE
     if (use_rdma) {
         return rdma->recv(data, size);
@@ -592,6 +708,9 @@ void socket_t::impl::update_caps(const uint8_t * remote_caps) {
 }
 
 bool socket_t::impl::flush() {
+    if (sec && !seal_record()) {
+        return false;
+    }
 #ifdef GGML_RPC_RDMA_APPLE
     if (use_rdma) {
         return rdma->flush();
@@ -616,6 +735,13 @@ bool socket_t::recv_data(void * data, size_t size) {
 
 bool socket_t::flush() {
     return pimpl->flush();
+}
+
+void socket_t::enable_encryption(const uint8_t send_key[32], const uint8_t recv_key[32]) {
+    auto sec = std::make_unique<secure_channel>();
+    std::memcpy(sec->send_key, send_key, 32);
+    std::memcpy(sec->recv_key, recv_key, 32);
+    pimpl->sec = std::move(sec);
 }
 
 void socket_t::get_caps(uint8_t * local_caps) {
