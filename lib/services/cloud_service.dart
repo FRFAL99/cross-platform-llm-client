@@ -11,7 +11,8 @@ class CloudService extends GetxService {
   final HiveService _hive = Get.find<HiveService>();
 
   String get _provider =>
-      _hive.getSetting(AppConstants.keyCloudProvider, defaultValue: 'openrouter') ??
+      _hive.getSetting(AppConstants.keyCloudProvider,
+          defaultValue: 'openrouter') ??
       'openrouter';
 
   String get _apiKey {
@@ -62,8 +63,13 @@ class CloudService extends GetxService {
   // endpoint) leaves the chat loading forever.
   static const _connectTimeout = Duration(seconds: 30);
   static const _responseTimeout = Duration(seconds: 120);
+
   /// Max gap between streamed chunks. Not const so tests can shorten it.
   static Duration streamIdleTimeout = const Duration(seconds: 60);
+
+  /// Native API endpoints. Not const so tests can point them at a fake server.
+  static String anthropicEndpoint = AppConstants.anthropicEndpoint;
+  static String googleEndpoint = AppConstants.googleEndpoint;
 
   Future<http.Response> _post(Uri url,
           {Map<String, String>? headers, Object? body}) =>
@@ -92,6 +98,14 @@ class CloudService extends GetxService {
     }
 
     try {
+      if (onToken != null && _provider == 'anthropic') {
+        return await _streamAnthropic(
+            messages, imageBase64, temperature, maxTokens, onToken);
+      }
+      if (onToken != null && _provider == 'google') {
+        return await _streamGoogle(
+            messages, imageBase64, temperature, maxTokens, onToken);
+      }
       if (onToken != null && _supportsStreaming) {
         return await _streamOpenAICompatible(
           endpoint: _openAICompatibleEndpoint,
@@ -216,13 +230,19 @@ class CloudService extends GetxService {
 
   // ─── Anthropic ──────────────────────────────────
 
-  Future<String> _sendAnthropic(
+  Map<String, String> get _anthropicHeaders => {
+        'x-api-key': _apiKey,
+        'anthropic-version': '2023-06-01',
+        'Content-Type': 'application/json',
+      };
+
+  Map<String, dynamic> _anthropicBody(
     List<Map<String, String>> messages,
     String? imageBase64,
     double? temperature,
-    int? maxTokens,
-  ) async {
-    // Extract system message
+    int? maxTokens, {
+    bool stream = false,
+  }) {
     String? systemMsg;
     final apiMessages = <Map<String, dynamic>>[];
 
@@ -257,22 +277,27 @@ class CloudService extends GetxService {
       }
     }
 
-    final body = <String, dynamic>{
+    return {
       'model': _model,
       'messages': apiMessages,
       'max_tokens': maxTokens ?? AppConstants.defaultMaxTokens,
       'temperature': temperature ?? AppConstants.defaultTemperature,
+      if (systemMsg != null) 'system': systemMsg,
+      if (stream) 'stream': true,
     };
-    if (systemMsg != null) body['system'] = systemMsg;
+  }
 
+  Future<String> _sendAnthropic(
+    List<Map<String, String>> messages,
+    String? imageBase64,
+    double? temperature,
+    int? maxTokens,
+  ) async {
     final response = await _post(
-      Uri.parse(AppConstants.anthropicEndpoint),
-      headers: {
-        'x-api-key': _apiKey,
-        'anthropic-version': '2023-06-01',
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode(body),
+      Uri.parse(anthropicEndpoint),
+      headers: _anthropicHeaders,
+      body: jsonEncode(
+          _anthropicBody(messages, imageBase64, temperature, maxTokens)),
     );
 
     if (response.statusCode != 200) {
@@ -284,7 +309,106 @@ class CloudService extends GetxService {
     return content.isNotEmpty ? content[0]['text'] ?? '' : '';
   }
 
+  /// Messages API with `stream: true`: text arrives in content_block_delta
+  /// events and message_stop ends a complete reply.
+  Future<String> _streamAnthropic(
+    List<Map<String, String>> messages,
+    String? imageBase64,
+    double? temperature,
+    int? maxTokens,
+    void Function(String token) onToken,
+  ) {
+    final request = http.Request('POST', Uri.parse(anthropicEndpoint));
+    request.headers
+        .addAll({..._anthropicHeaders, 'Accept': 'text/event-stream'});
+    request.body = jsonEncode(_anthropicBody(
+        messages, imageBase64, temperature, maxTokens,
+        stream: true));
+    return _streamSse(
+      request: request,
+      providerLabel: 'Anthropic',
+      onToken: onToken,
+      parse: (data) {
+        switch (data['type']) {
+          case 'content_block_delta':
+            final delta = data['delta'];
+            return (
+              token: delta is Map && delta['type'] == 'text_delta'
+                  ? delta['text']?.toString()
+                  : null,
+              finished: false,
+              error: null,
+            );
+          case 'message_stop':
+            return (token: null, finished: true, error: null);
+          case 'error':
+            final error = data['error'];
+            return (
+              token: null,
+              finished: false,
+              error: error is Map ? '${error['message'] ?? error}' : '$error',
+            );
+          default:
+            return (token: null, finished: false, error: null);
+        }
+      },
+    );
+  }
+
   // ─── Google Gemini ──────────────────────────────
+
+  /// Gemini wants roles "user" and "model", with the system prompt apart.
+  Map<String, dynamic> _googleBody(
+    List<Map<String, String>> messages,
+    String? imageBase64,
+    double? temperature,
+    int? maxTokens,
+  ) {
+    final system = <String>[];
+    final contents = <Map<String, dynamic>>[];
+    for (final msg in messages) {
+      final text = msg['content'] ?? '';
+      if (msg['role'] == 'system') {
+        system.add(text);
+        continue;
+      }
+      final role = msg['role'] == 'assistant' ? 'model' : 'user';
+      final parts = <Map<String, dynamic>>[
+        {'text': text}
+      ];
+      if (imageBase64 != null && msg == messages.last) {
+        parts.add({
+          'inline_data': {'mime_type': 'image/jpeg', 'data': imageBase64}
+        });
+      }
+      // Gemini rejects two turns in a row from the same role: merge them.
+      if (contents.isNotEmpty && contents.last['role'] == role) {
+        (contents.last['parts'] as List).addAll(parts);
+      } else {
+        contents.add({'role': role, 'parts': parts});
+      }
+    }
+    return {
+      if (system.isNotEmpty)
+        'systemInstruction': {
+          'parts': [
+            {'text': system.join('\n\n')}
+          ]
+        },
+      'contents': contents,
+      'generationConfig': {
+        'temperature': temperature ?? AppConstants.defaultTemperature,
+        'maxOutputTokens': maxTokens ?? AppConstants.defaultMaxTokens,
+      },
+    };
+  }
+
+  // The key goes in a header, not the URL, so it can't leak via exception
+  // messages (http's ClientException includes the full URI).
+  Map<String, String> get _googleHeaders => {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': _apiKey,
+      };
 
   Future<String> _sendGoogle(
     List<Map<String, String>> messages,
@@ -292,42 +416,11 @@ class CloudService extends GetxService {
     double? temperature,
     int? maxTokens,
   ) async {
-    final parts = <Map<String, dynamic>>[];
-
-    // Combine all messages into parts
-    for (final msg in messages) {
-      parts.add({'text': '${msg['role']}: ${msg['content']}'});
-    }
-
-    // Add image if present
-    if (imageBase64 != null) {
-      parts.add({
-        'inline_data': {
-          'mime_type': 'image/jpeg',
-          'data': imageBase64,
-        }
-      });
-    }
-
-    // Key goes in a header, not the URL, so it can't leak via exception
-    // messages (http's ClientException includes the full URI).
-    final url = '${AppConstants.googleEndpoint}/$_model:generateContent';
-
     final response = await _post(
-      Uri.parse(url),
-      headers: {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': _apiKey,
-      },
-      body: jsonEncode({
-        'contents': [
-          {'parts': parts}
-        ],
-        'generationConfig': {
-          'temperature': temperature ?? AppConstants.defaultTemperature,
-          'maxOutputTokens': maxTokens ?? AppConstants.defaultMaxTokens,
-        },
-      }),
+      Uri.parse('$googleEndpoint/$_model:generateContent'),
+      headers: _googleHeaders,
+      body: jsonEncode(
+          _googleBody(messages, imageBase64, temperature, maxTokens)),
     );
 
     if (response.statusCode != 200) {
@@ -335,12 +428,57 @@ class CloudService extends GetxService {
     }
 
     final data = jsonDecode(response.body);
-    final candidates = data['candidates'] as List?;
-    if (candidates != null && candidates.isNotEmpty) {
-      final contentParts = candidates[0]['content']['parts'] as List;
-      return contentParts.map((p) => p['text'] ?? '').join('');
-    }
-    return '';
+    return _googleText(data) ?? '';
+  }
+
+  static String? _googleText(Map data) {
+    final candidates = data['candidates'];
+    if (candidates is! List || candidates.isEmpty) return null;
+    final content =
+        candidates.first is Map ? candidates.first['content'] : null;
+    final parts = content is Map ? content['parts'] : null;
+    if (parts is! List) return null;
+    return parts.map((p) => p is Map ? (p['text'] ?? '') : '').join('');
+  }
+
+  /// streamGenerateContent with alt=sse: each event carries the next text
+  /// and the last one a finishReason.
+  Future<String> _streamGoogle(
+    List<Map<String, String>> messages,
+    String? imageBase64,
+    double? temperature,
+    int? maxTokens,
+    void Function(String token) onToken,
+  ) {
+    final request = http.Request('POST',
+        Uri.parse('$googleEndpoint/$_model:streamGenerateContent?alt=sse'));
+    request.headers.addAll({..._googleHeaders, 'Accept': 'text/event-stream'});
+    request.body =
+        jsonEncode(_googleBody(messages, imageBase64, temperature, maxTokens));
+    return _streamSse(
+      request: request,
+      providerLabel: 'Google',
+      onToken: onToken,
+      parse: (data) {
+        final error = data['error'];
+        if (error != null) {
+          return (
+            token: null,
+            finished: false,
+            error: error is Map ? '${error['message'] ?? error}' : '$error',
+          );
+        }
+        final candidates = data['candidates'];
+        final first = candidates is List && candidates.isNotEmpty
+            ? candidates.first
+            : null;
+        return (
+          token: _googleText(data),
+          finished: first is Map && first['finishReason'] != null,
+          error: null,
+        );
+      },
+    );
   }
 
   Future<String> _sendOpenRouter(
@@ -440,6 +578,44 @@ class CloudService extends GetxService {
       'stream': true,
     });
 
+    return _streamSse(
+      request: request,
+      providerLabel: providerLabel,
+      onToken: onToken,
+      parse: (data) {
+        final error = data['error'];
+        if (error != null) {
+          return (
+            token: null,
+            finished: false,
+            error: error is Map
+                ? '${error['message'] ?? error['code'] ?? error}'
+                : '$error',
+          );
+        }
+        final choices = data['choices'];
+        final choice =
+            choices is List && choices.isNotEmpty ? choices.first : null;
+        if (choice is! Map) return (token: null, finished: false, error: null);
+        final delta = choice['delta'];
+        return (
+          token: delta is Map ? delta['content']?.toString() : null,
+          finished: choice['finish_reason'] != null,
+          error: null,
+        );
+      },
+    );
+  }
+
+  /// Sends [request] and reads a server-sent events stream. [parse] turns
+  /// each JSON event into text, an end marker or an error.
+  Future<String> _streamSse({
+    required http.Request request,
+    required String providerLabel,
+    required void Function(String token) onToken,
+    required ({String? token, bool finished, String? error}) Function(Map data)
+        parse,
+  }) async {
     final client = http.Client();
     _activeStreamClient = client;
     try {
@@ -480,25 +656,17 @@ class CloudService extends GetxService {
         }
         if (data == null) continue;
 
-        final error = data['error'];
-        if (error != null) {
-          streamError = error is Map
-              ? '${error['message'] ?? error['code'] ?? error}'
-              : '$error';
+        final event = parse(data);
+        if (event.error != null) {
+          streamError = event.error;
           break;
         }
-
-        final choices = data['choices'];
-        final choice =
-            choices is List && choices.isNotEmpty ? choices.first : null;
-        if (choice is! Map) continue;
-        if (choice['finish_reason'] != null) finished = true;
-        final delta = choice['delta'];
-        final token = delta is Map ? delta['content']?.toString() : null;
+        final token = event.token;
         if (token != null && token.isNotEmpty) {
           buffer.write(token);
           onToken(token);
         }
+        if (event.finished) finished = true;
       }
 
       final text = buffer.toString();
