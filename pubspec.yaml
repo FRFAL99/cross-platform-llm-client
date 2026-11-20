@@ -1,5 +1,5 @@
-name: privatelm
-description: PrivateLM — run LLMs on your phone or a phone cluster and serve them over an OpenAI-compatible API
+name: onelm
+description: OneLM — run LLMs on your phone or a phone cluster and serve them over an OpenAI-compatible API
 publish_to: "none"
 version: 1.1.0+8
 

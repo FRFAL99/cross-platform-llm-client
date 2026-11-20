@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:privatelm/services/lost_worker_retry.dart';
+import 'package:onelm/services/lost_worker_retry.dart';
 
 void main() {
   /// Attempts that stream [tokens] and then report [lost] (one per run).

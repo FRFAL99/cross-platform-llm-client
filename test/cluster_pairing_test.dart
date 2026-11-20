@@ -1,7 +1,7 @@
 import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:privatelm/services/cluster_pairing.dart';
+import 'package:onelm/services/cluster_pairing.dart';
 
 void main() {
   test('generates 12-character codes from the unambiguous alphabet', () {

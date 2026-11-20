@@ -33,7 +33,7 @@ extension _AppBarSection on ChatView {
         if (controller.messages.isEmpty) {
           return Padding(
             padding: const EdgeInsets.only(right: 16),
-            child: Text('PrivateLM',
+            child: Text('OneLM',
                 style: TextStyle(
                     fontFamily: 'Inter',
                     fontWeight: FontWeight.w700,

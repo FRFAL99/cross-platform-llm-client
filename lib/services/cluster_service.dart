@@ -122,7 +122,7 @@ class ClusterService extends GetxService {
       refreshWorkerStatus().then((_) {
         if (worker.value.running) _watchWorker();
       });
-      // A worker runs at full speed only while PrivateLM is on screen (it
+      // A worker runs at full speed only while OneLM is on screen (it
       // borrows the app's priority), so keep the screen on while sharing.
       ever<ClusterWorkerStatus>(worker, (_) => _updateKeepScreenOn());
       ever<bool>(serving, (_) => _updateKeepScreenOn());
@@ -152,7 +152,7 @@ class ClusterService extends GetxService {
     if (next == role) return;
     if (next != ClusterRole.worker && role == ClusterRole.worker) {
       if (workerStopsWithApp) {
-        showToast('Still sharing', 'Close PrivateLM to stop sharing this device.');
+        showToast('Still sharing', 'Close OneLM to stop sharing this device.');
         return;
       }
       await stopWorker();
@@ -322,8 +322,8 @@ class ClusterService extends GetxService {
         ClusterCheck.wrongCode =>
           'Wrong pairing code for $endpoint. Check the code shown on the worker phone.',
         ClusterCheck.oldVersion =>
-          '$endpoint runs a different PrivateLM version (or isn\'t a '
-              'PrivateLM worker). Update the app on both phones.',
+          '$endpoint runs a different OneLM version (or isn\'t a '
+              'OneLM worker). Update the app on both phones.',
         ClusterCheck.busy => '$endpoint is busy with another master phone.',
         ClusterCheck.unsupported => 'This build has no phone cluster support.',
         ClusterCheck.unreachable => 'Can\'t reach $endpoint. Check that the phone is a '

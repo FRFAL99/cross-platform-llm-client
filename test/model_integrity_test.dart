@@ -1,9 +1,9 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:privatelm/core/constants.dart';
-import 'package:privatelm/services/download_native.dart' as native;
-import 'package:privatelm/services/model_integrity.dart';
+import 'package:onelm/core/constants.dart';
+import 'package:onelm/services/download_native.dart' as native;
+import 'package:onelm/services/model_integrity.dart';
 
 void main() {
   const abc =
@@ -75,6 +75,11 @@ void main() {
             AppConstants.legacySystemPrompts.first),
         isTrue);
     expect(AppConstants.isDefaultSystemPrompt('You are a pirate.'), isFalse);
-    expect(AppConstants.systemPrompt, contains('PrivateLM'));
+    expect(AppConstants.systemPrompt, contains('OneLM'));
+    // The default from before the rename still counts as the default.
+    expect(
+        AppConstants.isDefaultSystemPrompt(
+            AppConstants.systemPrompt.replaceFirst('OneLM', 'PrivateLM')),
+        isTrue);
   });
 }

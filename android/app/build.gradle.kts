@@ -27,7 +27,7 @@ if (isReleaseBuild && !hasReleaseKeystore && !allowDebugReleaseSigning) {
 }
 
 android {
-    namespace = "com.orailnoor.privatelm"
+    namespace = "io.github.frfal99.onelm"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -50,7 +50,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.orailnoor.privatelm"
+        applicationId = "io.github.frfal99.onelm"
         minSdk = 28
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode

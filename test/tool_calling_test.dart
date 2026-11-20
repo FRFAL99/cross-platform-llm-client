@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:privatelm/services/server/tool_calling.dart';
+import 'package:onelm/services/server/tool_calling.dart';
 
 void main() {
   const names = ['get_weather', 'search'];

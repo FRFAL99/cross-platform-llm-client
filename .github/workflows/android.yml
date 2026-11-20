@@ -110,7 +110,7 @@ jobs:
           mkdir -p dist
           for f in build/app/outputs/flutter-apk/app-*-release.apk; do
             abi=$(basename "$f" | sed -E 's/app-(.*)-release.apk/\1/')
-            cp "$f" "dist/PrivateLM-$version-$abi.apk"
+            cp "$f" "dist/OneLM-$version-$abi.apk"
           done
           ls -l dist
 
@@ -137,5 +137,5 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" dist/*.apk \
             --repo "$GITHUB_REPOSITORY" \
-            --title "PrivateLM ${GITHUB_REF_NAME#v}" \
+            --title "OneLM ${GITHUB_REF_NAME#v}" \
             --generate-notes

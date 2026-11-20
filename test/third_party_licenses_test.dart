@@ -2,9 +2,9 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:privatelm/core/constants.dart';
-import 'package:privatelm/core/third_party_licenses.dart';
-import 'package:privatelm/models/ai_model.dart';
+import 'package:onelm/core/constants.dart';
+import 'package:onelm/core/third_party_licenses.dart';
+import 'package:onelm/models/ai_model.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

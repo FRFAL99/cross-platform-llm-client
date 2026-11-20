@@ -33,7 +33,7 @@ final class ClusterChannel: NSObject, NetServiceDelegate {
         case "stopWorker":
             // ggml's server can't be stopped inside a running app.
             result(FlutterError(code: "IOS_STOP",
-                                message: "Close PrivateLM to stop sharing this device.",
+                                message: "Close OneLM to stop sharing this device.",
                                 details: nil))
         case "workerStatus":
             let running = LlamaClusterWorker.isRunning()
@@ -108,7 +108,7 @@ final class ClusterChannel: NSObject, NetServiceDelegate {
     /// Bonjour, so masters can find this device with "Find nearby".
     private func advertise(port: Int) {
         let service = NetService(domain: "local.", type: "_privatelm._tcp.",
-                                 name: "PrivateLM \(UIDevice.current.name)", port: Int32(port))
+                                 name: "OneLM \(UIDevice.current.name)", port: Int32(port))
         let txt: [String: Data] = [
             "ram": Data("\(ramMb)".utf8),
             "bw": Data(String(format: "%.1f", locale: Locale(identifier: "en_US_POSIX"), bandwidth).utf8),

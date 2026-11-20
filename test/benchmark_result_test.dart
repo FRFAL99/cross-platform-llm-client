@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:privatelm/models/benchmark_result.dart';
+import 'package:onelm/models/benchmark_result.dart';
 
 void main() {
   test('benchmark results round-trip through their stored map', () {

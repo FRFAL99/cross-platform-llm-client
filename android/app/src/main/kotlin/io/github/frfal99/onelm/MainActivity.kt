@@ -1,4 +1,4 @@
-package com.orailnoor.privatelm
+package io.github.frfal99.onelm
 
 import android.app.AlertDialog
 import android.app.AlarmManager
@@ -279,7 +279,7 @@ class MainActivity : FlutterActivity() {
         val key = "update:$safeName"
 
         val request = DownloadManager.Request(Uri.parse(url)).apply {
-            setTitle("PrivateLM update")
+            setTitle("OneLM update")
             setDescription(safeName)
             setMimeType("application/vnd.android.package-archive")
             setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)

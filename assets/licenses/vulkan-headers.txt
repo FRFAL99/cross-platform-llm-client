@@ -1,4 +1,4 @@
-Vulkan-Headers are available under Apache-2.0 OR MIT; PrivateLM uses them
+Vulkan-Headers are available under Apache-2.0 OR MIT; OneLM uses them
 under the MIT license.
 
 Copyright 2015-2026 The Khronos Group Inc.

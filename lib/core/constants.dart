@@ -71,15 +71,16 @@ class AppConstants {
 
   // System Prompt (compact for small context models)
   static const String systemPrompt =
-      '''You are PrivateLM, a helpful and friendly assistant. Be concise, accurate, and conversational. Answer questions directly without unnecessary preamble.''';
+      '''You are OneLM, a helpful and friendly assistant. Be concise, accurate, and conversational. Answer questions directly without unnecessary preamble.''';
 
   // System Prompt for Uncensored Models
   static const String uncensoredSystemPrompt =
-      '''You are PrivateLM running with an uncensored local model. Be direct, mature, and conversational. Avoid moralizing or unnecessary disclaimers, but keep answers accurate and do not help with real-world harm, abuse, or illegal activity.''';
+      '''You are OneLM running with an uncensored local model. Be direct, mature, and conversational. Avoid moralizing or unnecessary disclaimers, but keep answers accurate and do not help with real-world harm, abuse, or illegal activity.''';
 
   /// Default system prompts of older versions, still stored in some
   /// settings: treated as the default, not as a custom prompt.
   static const legacySystemPrompts = {
+    '''You are PrivateLM, a helpful and friendly assistant. Be concise, accurate, and conversational. Answer questions directly without unnecessary preamble.''',
     '''You are AI Chat, a helpful and friendly assistant. Be concise, accurate, and conversational. Answer questions directly without unnecessary preamble.''',
   };
 

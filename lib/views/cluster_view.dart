@@ -87,7 +87,7 @@ class _ClusterViewState extends State<ClusterView> {
                   'phones on the same Wi-Fi.\n\n'
                   'Master: the phone you chat on. It runs the model.\n'
                   'Worker: a phone that lends its memory to the master.'
-              : 'Help an Android phone running PrivateLM run models too big for '
+              : 'Help an Android phone running OneLM run models too big for '
                   'it alone: choose Worker, then enter the address and pairing '
                   'code it shows on that phone.',
           icon: Icons.hub_outlined,
@@ -172,7 +172,7 @@ class _ClusterViewState extends State<ClusterView> {
       if (s.throttled) ...[
         AppNotice(
           'Android is slowing this worker down (slow cores only), which slows '
-          'the whole cluster. Set PrivateLM\'s battery use to Unrestricted, '
+          'the whole cluster. Set OneLM\'s battery use to Unrestricted, '
           'then turn Worker off and on.',
           icon: Icons.speed_rounded,
           color: t.orange,
@@ -201,9 +201,9 @@ class _ClusterViewState extends State<ClusterView> {
         ),
       ],
       SectionFootnote(ClusterService.workerStopsWithApp
-          ? 'Keep this device plugged in, on the same Wi-Fi, with PrivateLM open: '
-              'iOS pauses apps in the background. Close PrivateLM to stop sharing.'
-          : 'Keep this phone plugged in and on the same Wi-Fi, with PrivateLM '
+          ? 'Keep this device plugged in, on the same Wi-Fi, with OneLM open: '
+              'iOS pauses apps in the background. Close OneLM to stop sharing.'
+          : 'Keep this phone plugged in and on the same Wi-Fi, with OneLM '
               'open: the screen stays on while sharing, because Android slows '
               'background work. Set Phone cluster to Off to stop. Only a master '
               'that knows the pairing code can use this phone, and everything '

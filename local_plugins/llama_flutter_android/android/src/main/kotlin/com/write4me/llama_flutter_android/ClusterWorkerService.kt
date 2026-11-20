@@ -181,7 +181,7 @@ class ClusterWorkerService : Service() {
     /** Advertises this worker over NSD (mDNS) with what a master needs to plan. */
     private fun advertise(port: Int) {
         val info = NsdServiceInfo().apply {
-            serviceName = "PrivateLM ${Build.MODEL}"
+            serviceName = "OneLM ${Build.MODEL}"
             serviceType = SERVICE_TYPE
             setPort(port)
             setAttribute("ram", ramMb.toString())

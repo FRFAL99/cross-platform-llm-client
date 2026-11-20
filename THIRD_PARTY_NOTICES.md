@@ -1,6 +1,6 @@
 # Third-party notices
 
-PrivateLM is released under the MIT License (see [LICENSE](./LICENSE)). It
+OneLM (formerly PrivateLM) is released under the MIT License (see [LICENSE](./LICENSE)). It
 is a fork of [orailnoor/cross-platform-llm-client](https://github.com/orailnoor/cross-platform-llm-client)
 (MIT, © 2026 cross-platform-llm-client contributors: orailnoor, techjarves),
 whose copyright notice is kept in `LICENSE`.

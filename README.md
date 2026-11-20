@@ -1,8 +1,8 @@
-# PrivateLM
+# OneLM
 
 Run an LLM on your own phone, or across several phones, and use it from your other apps.
 
-PrivateLM does three things:
+OneLM does three things:
 
 1. **Runs GGUF models on the phone** with llama.cpp, using the GPU (Vulkan) when it can and picking settings from the device RAM.
 2. **Splits a model across phones** on the same Wi-Fi (phone cluster), so a model too big for one phone can still run.
@@ -15,17 +15,17 @@ This is a fork of [orailnoor/cross-platform-llm-client](https://github.com/orail
 ## Install on Android
 
 1. On your phone, open the [latest release](https://github.com/FRFAL99/cross-platform-llm-client/releases/latest).
-2. Download `PrivateLM-<version>-arm64-v8a.apk` (almost every recent phone). Use `armeabi-v7a` only on old 32-bit phones.
+2. Download `OneLM-<version>-arm64-v8a.apk` (almost every recent phone). Use `armeabi-v7a` only on old 32-bit phones.
 3. Open the file and allow your browser or file manager to install unknown apps when Android asks.
 4. To update, use Settings › App updates › Check for updates. The automatic check is off by default, so the app doesn't contact GitHub unless you ask.
 
-If you installed the upstream PrivateLM before, uninstall it first: it uses the same package name but a different signing key, so Android refuses to update it.
+OneLM was called PrivateLM before. It has its own package name now (`io.github.frfal99.onelm`), so it installs next to PrivateLM instead of updating it. Models, chats and settings don't carry over: uninstall PrivateLM once you've moved to OneLM.
 
 ## Use it
 
 - **Models**: download a GGUF model from the catalogue (Hugging Face) or import a `.gguf` file, then load it. Every download is checked against its SHA-256 (pinned in the catalogue, or the one Hugging Face publishes for the file) and deleted if it doesn't match.
 - **Phone cluster** (Settings › Phone cluster): on each extra phone choose *Worker*; on the main phone choose *Master* and add each worker with the address and **pairing code** it shows (or *Find nearby*, then the code). The next model load spreads the layers across the phones.
-  - Only a master that knows a worker's pairing code can use it. The phones exchange one-time X25519 keys and prove they know the code with HMAC-SHA256 over the exchange, so the code never crosses the network. Everything after that (model weights, activations, results) is encrypted and authenticated with ChaCha20-Poly1305, with fresh keys for every connection. Someone listening on the Wi-Fi learns nothing, even if they later learn the code; tampered data is refused. Both phones need this version: an older worker is reported as "different PrivateLM version". *New pairing code* on the worker locks out masters that knew the old one.
+  - Only a master that knows a worker's pairing code can use it. The phones exchange one-time X25519 keys and prove they know the code with HMAC-SHA256 over the exchange, so the code never crosses the network. Everything after that (model weights, activations, results) is encrypted and authenticated with ChaCha20-Poly1305, with fresh keys for every connection. Someone listening on the Wi-Fi learns nothing, even if they later learn the code; tampered data is refused. Both phones need this version: an older worker is reported as "different OneLM version". *New pairing code* on the worker locks out masters that knew the old one.
   - Encryption costs some speed when the model is first sent to the workers (roughly 300 MB/s per phone on a desktop CPU). Generation sends little data and is hardly affected.
   - If a worker drops out (Wi-Fi off, battery, app closed), the model reloads on the phones that are left and the answer in progress starts again there, so the chat and API clients still get their answer. The workers that stayed keep their part of the model in a local cache, so the reload sends little over Wi-Fi. A streaming API response that already sent text can't be taken back: it ends with an error and the client retries. A worker that vanishes without closing the connection is noticed within about 30 seconds.
   - Workers paired with an older version show *Code* in the list: tap them and enter the code once. Workers must run this version too.
@@ -47,7 +47,7 @@ If you installed the upstream PrivateLM before, uninstall it first: it uses the 
 - **Tool calling**: tools are described with the `<tools>` / `<tool_call>` convention and the reply is parsed back into OpenAI `tool_calls`. On Android a llama.cpp grammar makes every call valid JSON with a known function name and arguments that match its `parameters`: from the first token with `tool_choice: "required"` or a named function, from `<tool_call>` on with `auto` (the model may also just answer). Use a model trained for it (Qwen 2.5/3, Hermes, Llama 3.1+, Mistral). Tool results go back as `role: "tool"` messages as usual.
 - **JSON mode**: on Android, `json_object` and `json_schema` are enforced with a grammar, so the reply always parses. Schemas support `type`, `properties`, `required`, `items`, `enum`, `const`, `anyOf`/`oneOf`, `allOf`, local `$ref` and string/array lengths; `pattern`, `format` and number bounds aren't enforced. A schema it can't read is only described to the model (the app log says so). Reasoning models skip their thinking under a grammar.
 - **Usage**: responses include `usage` (prompt and completion tokens); streams add a final usage chunk when `stream_options.include_usage` is true.
-- **Background (Android).** While the server runs, it keeps answering with the screen off, another app in front, or PrivateLM swiped away from recent apps (foreground service, wake lock, Wi-Fi lock; the app keeps its Flutter engine while the server runs). Stop it in the Server tab or with **Stop server** on its notification. Allow PrivateLM to run without battery limits when the Server tab asks. Force-stopping the app stops it too.
+- **Background (Android).** While the server runs, it keeps answering with the screen off, another app in front, or OneLM swiped away from recent apps (foreground service, wake lock, Wi-Fi lock; the app keeps its Flutter engine while the server runs). Stop it in the Server tab or with **Stop server** on its notification. Allow OneLM to run without battery limits when the Server tab asks. Force-stopping the app stops it too.
 
 ## Network use
 
@@ -92,14 +92,14 @@ Here is how you can install the app using AltStore and AltServer:
 * You must have **AltStore** successfully installed on your iOS device.
 
 **Installation Steps:**
-1. **Download the IPA:** Go to the [Releases](https://github.com/FRFAL99/cross-platform-llm-client/releases) page on your iOS device (using Safari) and download the latest `PrivateLM-iOS.zip` package, extract it to get the `.ipa` file.
+1. **Download the IPA:** Go to the [Releases](https://github.com/FRFAL99/cross-platform-llm-client/releases) page on your iOS device (using Safari) and download the latest `OneLM-iOS.zip` package, extract it to get the `.ipa` file.
 2. **Open in AltStore:**
    * Locate the extracted `.ipa` file in your device's "Files" app.
    * Tap the **Share** button and select **AltStore** from the list of apps.
    * *Alternatively*, you can open the AltStore app, go to the **My Apps** tab, tap the **"+" (plus)** icon in the top-left corner, and select the downloaded IPA file.
 3. **Install:** AltStore will begin installing the app. You may be prompted to enter your Apple ID credentials if this is your first time.
 4. **Enable Developer Mode:** On iOS 16 and later, ensure "Developer Mode" is enabled in your device's Settings (`Settings > Privacy & Security > Developer Mode`) to launch the sideloaded app.
-5. **Launch:** Once installation is finished, PrivateLM will appear in the **My Apps** tab in AltStore and on your device's home screen!
+5. **Launch:** Once installation is finished, OneLM will appear in the **My Apps** tab in AltStore and on your device's home screen!
 
 *Note: Sideloaded apps via AltStore expire after 7 days, but AltStore will attempt to automatically refresh them in the background when connected to the same Wi-Fi as your computer running AltServer.*
 
@@ -182,7 +182,7 @@ flutter build web --release
 
 MIT — see [LICENSE](./LICENSE) for details.
 
-PrivateLM is a fork of [orailnoor/cross-platform-llm-client](https://github.com/orailnoor/cross-platform-llm-client)
+OneLM (formerly PrivateLM) is a fork of [orailnoor/cross-platform-llm-client](https://github.com/orailnoor/cross-platform-llm-client)
 by orailnoor and techjarves (MIT). Inference runs on [llama.cpp](https://github.com/ggml-org/llama.cpp)
 (MIT, the ggml authors), through a modified copy of the `llama_flutter_android`
 plugin (MIT, dragneel2074). Third-party components, fonts and the licenses of

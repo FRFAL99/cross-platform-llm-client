@@ -5,8 +5,8 @@
 //   grammar_check /tmp/cases.txt
 // (a newline inside a case is written as U+23CE).
 import 'dart:io';
-import 'package:privatelm/services/server/json_grammar.dart';
-import 'package:privatelm/services/server/tool_calling.dart';
+import 'package:onelm/services/server/json_grammar.dart';
+import 'package:onelm/services/server/tool_calling.dart';
 
 final out = StringBuffer();
 void block(String name, String gbnf, List<String> yes, List<String> no) {

@@ -207,7 +207,7 @@ class ServerController extends GetxController {
   String _newApiKey() {
     final random = Random.secure();
     final bytes = List<int>.generate(24, (_) => random.nextInt(256));
-    return 'privatelm_${bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}';
+    return 'onelm_${bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}';
   }
 
   Future<void> copyText(String text, String label) async {

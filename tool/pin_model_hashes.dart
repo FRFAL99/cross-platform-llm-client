@@ -6,8 +6,8 @@
 // Add --check to only report, without writing.
 import 'dart:io';
 
-import 'package:privatelm/core/constants.dart';
-import 'package:privatelm/services/model_integrity.dart';
+import 'package:onelm/core/constants.dart';
+import 'package:onelm/services/model_integrity.dart';
 
 Future<String?> remoteHash(HttpClient client, String url) async {
   final request = await client.headUrl(Uri.parse(url));

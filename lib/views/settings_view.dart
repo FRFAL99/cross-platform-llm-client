@@ -148,10 +148,11 @@ class SettingsView extends GetView<SettingsController> {
                   child: Image.asset('assets/icons/appicon.png',
                       width: 32, height: 32),
                 ),
-                title: 'PrivateLM',
+                title: 'OneLM',
                 subtitle: controller.appVersion.value.isEmpty
-                    ? 'by orailnoor & techjarves'
-                    : 'Version ${controller.appVersion.value} · by orailnoor & techjarves',
+                    ? 'Based on the app by orailnoor & techjarves'
+                    : 'Version ${controller.appVersion.value} · '
+                        'based on the app by orailnoor & techjarves',
               ),
               AppRow(
                 icon: Icons.gavel_rounded,
@@ -160,7 +161,7 @@ class SettingsView extends GetView<SettingsController> {
                 chevron: true,
                 onTap: () => showLicensePage(
                   context: context,
-                  applicationName: 'PrivateLM',
+                  applicationName: 'OneLM',
                   applicationVersion: controller.appVersion.value,
                   applicationIcon: Padding(
                     padding: const EdgeInsets.all(8),
