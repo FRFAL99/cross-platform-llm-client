@@ -37,8 +37,14 @@ void main() {
         isNull);
   });
 
-  test('every pinned hash in the catalogue is well formed', () {
+  test('every catalogue download pins a well-formed hash', () {
     for (final m in AppConstants.availableModels) {
+      if ((m['url'] ?? '').isNotEmpty) {
+        expect(m['sha256'], isNotNull, reason: '${m['name']}');
+      }
+      if ((m['mmproj_url'] ?? '').isNotEmpty) {
+        expect(m['mmproj_sha256'], isNotNull, reason: '${m['name']} mmproj');
+      }
       for (final key in ['sha256', 'mmproj_sha256']) {
         final v = m[key];
         if (v != null) {
