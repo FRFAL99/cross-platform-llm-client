@@ -19,6 +19,7 @@ import android.provider.OpenableColumns
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import com.write4me.llama_flutter_android.InferenceService
 import java.io.File
 import kotlin.concurrent.thread
 import kotlin.system.exitProcess
@@ -36,6 +37,45 @@ class MainActivity : FlutterActivity() {
     private var pendingImportResult: MethodChannel.Result? = null
     private var pendingModelsDir: String? = null
     private val monitoredInAppDownloads = ConcurrentHashMap.newKeySet<Long>()
+
+    companion object {
+        /**
+         * The app's Flutter engine. Normally it ends with the window, but
+         * while the API server runs it is kept when the window closes
+         * (swiped away from recent apps): the server lives in Dart, and the
+         * inference foreground service keeps the process alive. Reopening
+         * the app attaches a new window to the same engine.
+         */
+        private var engine: FlutterEngine? = null
+    }
+
+    override fun provideFlutterEngine(context: Context): FlutterEngine {
+        engine?.let { return it }
+        val created = FlutterEngine(context.applicationContext)
+        created.addEngineLifecycleListener(object : FlutterEngine.EngineLifecycleListener {
+            override fun onPreEngineRestart() {}
+            override fun onEngineWillDestroy() {
+                if (engine === created) engine = null
+            }
+        })
+        engine = created
+        // The server was stopped (notification's Stop) with no window open:
+        // free the model and let the process end.
+        InferenceService.onServerStoppedWithoutUi = {
+            engine?.takeIf { it === created }?.destroy()
+        }
+        return created
+    }
+
+    override fun shouldDestroyEngineWithHost(): Boolean =
+        !isChangingConfigurations && !InferenceService.serverRunning
+
+    override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
+        // The engine may outlive this window: don't leave it calling here.
+        importChannel?.setMethodCallHandler(null)
+        importChannel = null
+        super.cleanUpFlutterEngine(flutterEngine)
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)

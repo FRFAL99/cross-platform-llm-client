@@ -124,9 +124,9 @@ class ServerView extends GetView<ServerController> {
                   icon: Icons.bolt_outlined,
                   title: 'Keeps running in the background',
                   subtitle:
-                      'While the server is on and the model stays loaded, '
-                      'it answers with the screen off or another app open. '
-                      'Closing PrivateLM from recent apps stops it.',
+                      'While the server is on, it answers with the screen '
+                      'off, another app open, or PrivateLM closed from '
+                      'recent apps. Stop it here or from its notification.',
                 ),
                 if (controller.batteryUnrestricted.value == false)
                   AppRow(

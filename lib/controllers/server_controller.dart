@@ -58,6 +58,9 @@ class ServerController extends GetxController {
     unawaited(refreshBatteryStatus());
     // The battery prompt is a system screen: re-check when the user is back.
     _lifecycle = AppLifecycleListener(onResume: refreshBatteryStatus);
+    if (_isAndroid) {
+      LlamaCluster.onStopServerRequested = () => unawaited(stopServer());
+    }
   }
 
   Future<void> refreshBatteryStatus() async {
@@ -226,6 +229,7 @@ class ServerController extends GetxController {
   void onClose() {
     apiKeyCtrl.dispose();
     _lifecycle?.dispose();
+    if (_isAndroid) LlamaCluster.onStopServerRequested = null;
     unawaited(stopServer());
     super.onClose();
   }
