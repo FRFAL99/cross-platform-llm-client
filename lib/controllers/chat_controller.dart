@@ -20,6 +20,7 @@ import '../services/hive_service.dart';
 import '../services/inference_service.dart';
 import '../services/cloud_service.dart';
 import '../services/app_log_service.dart';
+import '../services/chat_image_store.dart';
 import '../services/document_extractor_service.dart';
 import '../utils/history_trimmer.dart';
 import '../utils/thought_parser.dart';
@@ -180,7 +181,7 @@ class ChatController extends GetxController {
     final session = ChatSession(id: id, title: 'New Chat');
     _hive.saveSession(id, session.toMap());
     sessions.insert(0, session);
-    openChat(id);
+    openChat(id, isNew: true);
   }
 
   void _resetInferenceContext() {
@@ -190,17 +191,30 @@ class ChatController extends GetxController {
     }
   }
 
-  void openChat(String sessionId) {
+  void openChat(String sessionId, {bool isNew = false}) {
     stopGenerating();
     currentSessionId.value = sessionId;
-    final raw = _hive.getMessagesForChat(sessionId);
-    messages.value = raw.map((m) => ChatMessage.fromMap(m)).toList()
-      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    messages.clear();
+    if (!isNew) unawaited(_loadMessages(sessionId));
     final inference = Get.find<InferenceService>();
     if (inference.isModelLoaded.value) {
       inference.refreshContextInfo();
     }
     _resetInferenceContext();
+    _scrollToBottom(force: true);
+  }
+
+  /// Reads the chat's messages from storage. Messages added meanwhile (a
+  /// prompt sent while loading) are kept.
+  Future<void> _loadMessages(String sessionId) async {
+    final raw = await _hive.getMessagesForChat(sessionId);
+    if (currentSessionId.value != sessionId) return; // Opened another chat.
+    final loaded = raw.map((m) => ChatMessage.fromMap(m)).toList();
+    final loadedIds = loaded.map((m) => m.id).toSet();
+    messages.value = [
+      ...loaded,
+      ...messages.where((m) => !loadedIds.contains(m.id)),
+    ]..sort((a, b) => a.timestamp.compareTo(b.timestamp));
     _scrollToBottom(force: true);
   }
 
@@ -523,13 +537,28 @@ class ChatController extends GetxController {
       } catch (_) {}
     }
 
+    // Keep the image with the chat as a file (the picked one can be a temp
+    // file); only web stores it inside the message.
+    final userMsgId = _uuid.v4();
+    String? imageFile;
+    if (imgBase64 != null && ChatImageStore.isSupported) {
+      try {
+        imageFile =
+            await ChatImageStore.save(userMsgId, base64Decode(imgBase64));
+      } catch (e) {
+        Get.find<AppLogService>()
+            .warning('Could not save the chat image', details: e);
+      }
+    }
+
     // Add user message
     final userMsg = ChatMessage(
-      id: _uuid.v4(),
+      id: userMsgId,
       chatId: currentSessionId.value,
       role: 'user',
       content: effectiveText,
-      imageBase64: imgBase64, // Always save the encoded base64 string
+      imageBase64: imageFile == null ? imgBase64 : null,
+      imageFile: imageFile,
       imagePath: imagePath,
       fileName: fileName,
       fileContent: fileContent,

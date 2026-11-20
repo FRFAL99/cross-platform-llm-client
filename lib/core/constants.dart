@@ -4,6 +4,7 @@ class AppConstants {
   // Hive Box Names
   static const String chatSessionsBox = 'chat_sessions';
   static const String chatMessagesBox = 'chat_messages';
+  static const String chatMessageIndexBox = 'chat_message_index';
   /// Legacy box of the removed task feature, deleted on startup.
   static const String tasksBox = 'tasks';
   static const String settingsBox = 'settings';
@@ -57,6 +58,7 @@ class AppConstants {
   static const String keyClusterEnabled = 'cluster_enabled';
   static const String keyClusterWorkers = 'cluster_workers';
   static const String keyFontScale = 'font_scale';
+  static const String keyMessageStorageVersion = 'message_storage_version';
 
   // Default Model Config
   static const double defaultTemperature = 0.7;

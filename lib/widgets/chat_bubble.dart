@@ -44,7 +44,7 @@ class ChatBubble extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(bottom: 6),
             child: GestureDetector(
-              onTap: () => ImageViewer.show(context, message.imageBase64!),
+              onTap: () => ImageViewer.show(context, message.decodedImageBytes!),
               child: ConstrainedBox(
                 constraints:
                     BoxConstraints(maxWidth: maxW * 0.7, maxHeight: 260),
@@ -76,7 +76,7 @@ class ChatBubble extends StatelessWidget {
                 fileType: message.fileType,
                 fileSize: message.fileSize,
                 imageBase64: message.imageBase64,
-                imagePath: message.imagePath,
+                imagePath: message.imageFile ?? message.imagePath,
                 compact: true,
               ),
             ),
@@ -135,7 +135,7 @@ class ChatBubble extends StatelessWidget {
             fileType: message.fileType,
             fileSize: message.fileSize,
             imageBase64: message.imageBase64,
-            imagePath: message.imagePath,
+            imagePath: message.imageFile ?? message.imagePath,
             compact: true,
           ),
         ],
@@ -258,7 +258,7 @@ class ChatBubble extends StatelessWidget {
       child: Align(
         alignment: Alignment.centerLeft,
         child: GestureDetector(
-          onTap: () => ImageViewer.show(context, message.imageBase64!),
+          onTap: () => ImageViewer.show(context, message.decodedImageBytes!),
           child: Container(
             constraints: BoxConstraints(
               maxWidth: MediaQuery.of(context).size.width * 0.82,

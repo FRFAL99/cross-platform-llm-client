@@ -1,13 +1,22 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 class ChatMessage {
   final String id;
   final String chatId;
   final String role; // 'user', 'assistant', 'system', 'cmd'
   final String content;
-  final String? imageBase64; // For multimodal
+
+  /// Image bytes kept in the record. Only on web and in messages saved by
+  /// older versions; elsewhere the image lives in [imageFile].
+  final String? imageBase64;
   final String? imagePath;
+
+  /// The attached image saved by [ChatImageStore].
+  final String? imageFile;
   final String? fileName;
   final String? fileContent;
   final String? filePath;
@@ -23,19 +32,26 @@ class ChatMessage {
   // Cache decoded bytes to prevent flickering on re-build
   Uint8List? _decodedImageBytes;
   Uint8List? get decodedImageBytes {
-    if (imageBase64 == null) return null;
-    _decodedImageBytes ??= base64Decode(imageBase64!);
-    return _decodedImageBytes;
+    if (_decodedImageBytes != null) return _decodedImageBytes;
+    if (imageBase64 != null && imageBase64!.isNotEmpty) {
+      return _decodedImageBytes = base64Decode(imageBase64!);
+    }
+    if (imageFile != null && !kIsWeb) {
+      try {
+        return _decodedImageBytes = File(imageFile!).readAsBytesSync();
+      } catch (_) {}
+    }
+    return null;
   }
 
   ChatMessage({
-
     required this.id,
     required this.chatId,
     required this.role,
     required this.content,
     this.imageBase64,
     this.imagePath,
+    this.imageFile,
     this.fileName,
     this.fileContent,
     this.filePath,
@@ -56,6 +72,7 @@ class ChatMessage {
         'content': content,
         'imageBase64': imageBase64,
         'imagePath': imagePath,
+        if (imageFile != null) 'imageFile': imageFile,
         'fileName': fileName,
         'fileContent': fileContent,
         'filePath': filePath,
@@ -76,6 +93,7 @@ class ChatMessage {
         content: map['content'] ?? '',
         imageBase64: map['imageBase64'],
         imagePath: map['imagePath'],
+        imageFile: map['imageFile'],
         fileName: map['fileName'],
         fileContent: map['fileContent'],
         filePath: map['filePath'],

@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
@@ -9,17 +8,17 @@ import 'package:share_plus/share_plus.dart';
 import '../core/ui.dart';
 
 class ImageViewer extends StatefulWidget {
-  final String base64Image;
+  final Uint8List bytes;
 
-  const ImageViewer({super.key, required this.base64Image});
+  const ImageViewer({super.key, required this.bytes});
 
-  static Future<void> show(BuildContext context, String base64Image) {
+  static Future<void> show(BuildContext context, Uint8List bytes) {
     return showDialog(
       context: context,
       useSafeArea: false,
       barrierDismissible: true,
       barrierColor: Colors.black,
-      builder: (_) => ImageViewer(base64Image: base64Image),
+      builder: (_) => ImageViewer(bytes: bytes),
     );
   }
 
@@ -28,15 +27,9 @@ class ImageViewer extends StatefulWidget {
 }
 
 class _ImageViewerState extends State<ImageViewer> {
-  late final Uint8List _bytes;
+  Uint8List get _bytes => widget.bytes;
   bool _isSaving = false;
   bool _isSharing = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _bytes = base64Decode(widget.base64Image);
-  }
 
   Future<void> _download() async {
     setState(() => _isSaving = true);
