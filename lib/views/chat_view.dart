@@ -25,7 +25,6 @@ Color _appleBlue(BuildContext c) => Theme.of(c).brightness == Brightness.dark
     ? const Color(0xFF0A84FF)
     : const Color(0xFF007AFF);
 
-
 Color _sep(BuildContext c) => Theme.of(c).brightness == Brightness.dark
     ? Colors.white.withValues(alpha: 0.08)
     : Colors.black.withValues(alpha: 0.08);
