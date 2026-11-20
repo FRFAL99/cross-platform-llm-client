@@ -194,6 +194,16 @@ class LlamaCluster {
   static Future<void> setServerKeepAlive(bool on) =>
       _channel.invokeMethod('setServerKeepAlive', {'on': on});
 
+  /// Called when the "Stop server" button of the server's notification is
+  /// tapped (the app may have no window then).
+  static set onStopServerRequested(void Function()? handler) {
+    _channel.setMethodCallHandler(handler == null
+        ? null
+        : (call) async {
+            if (call.method == 'stopServerRequested') handler();
+          });
+  }
+
   static Future<int> localFreeRamMb() async =>
       await _channel.invokeMethod<int>('localFreeRamMb') ?? 0;
 

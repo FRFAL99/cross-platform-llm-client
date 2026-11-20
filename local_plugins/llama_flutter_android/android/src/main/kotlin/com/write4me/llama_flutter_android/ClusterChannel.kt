@@ -60,6 +60,11 @@ class ClusterChannel(
 
     init {
         channel.setMethodCallHandler(this)
+        // The notification's "Stop server" asks Dart to stop it, so the
+        // Server tab stays in sync.
+        InferenceService.onStopServerRequested = {
+            channel.invokeMethod("stopServerRequested", null)
+        }
         context.bindService(
             Intent(context, ClusterWorkerService::class.java),
             workerPriority,
@@ -248,6 +253,11 @@ class ClusterChannel(
      * answered with the screen off.
      */
     private fun setServerKeepAlive(on: Boolean) {
+        setServerLocks(on)
+        InferenceService.setServerRunning(context, on, hasUi = activity != null)
+    }
+
+    private fun setServerLocks(on: Boolean) {
         if (on) {
             if (serverWakeLock == null) {
                 val power = context.getSystemService(Context.POWER_SERVICE) as PowerManager
@@ -280,7 +290,9 @@ class ClusterChannel(
     fun dispose() {
         runCatching { context.unbindService(workerPriority) }
         setLowLatencyWifi(false)
-        setServerKeepAlive(false)
+        setServerLocks(false)
+        InferenceService.onStopServerRequested = null
+        InferenceService.setServerRunning(context, false, hasUi = true)
         channel.setMethodCallHandler(null)
     }
 
