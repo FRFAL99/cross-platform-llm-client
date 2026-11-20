@@ -247,6 +247,8 @@ class AppConstants {
       'recommended': 'uncensored',
       'url':
           'https://huggingface.co/bartowski/mlabonne_Qwen3-4B-abliterated-GGUF/resolve/main/mlabonne_Qwen3-4B-abliterated-Q4_K_M.gguf',
+      'sha256':
+          '004f7b8f59ccd5fa42258c52aa2087b89524cced84e955b9c8b115035ca073b2',
       'size': '2.5 GB',
       'description':
           'Qwen3 4B with refusals removed (abliterated) — the best uncensored pick for 6 GB+ phones; thinks before answering',
@@ -257,6 +259,8 @@ class AppConstants {
       'filename': 'mlabonne_gemma-3-4b-it-abliterated-q4_k_m.gguf',
       'url':
           'https://huggingface.co/bartowski/mlabonne_gemma-3-4b-it-abliterated-GGUF/resolve/main/mlabonne_gemma-3-4b-it-abliterated-Q4_K_M.gguf',
+      'sha256':
+          '1b18347ba3e998aa2fd4e21172369daa2f772aa0a228e3ed9136378346ccf3b7',
       'size': '2.5 GB',
       'description':
           'Gemma 3 4B with refusals removed (abliterated) — answers directly, good at writing',
@@ -267,6 +271,8 @@ class AppConstants {
       'filename': 'mlabonne_qwen3-1.7b-abliterated-q4_k_m.gguf',
       'url':
           'https://huggingface.co/bartowski/mlabonne_Qwen3-1.7B-abliterated-GGUF/resolve/main/mlabonne_Qwen3-1.7B-abliterated-Q4_K_M.gguf',
+      'sha256':
+          'bea197fd05bad4126cdfe3198b53e6458b731ba554d9bc33548d0259788a7ba8',
       'size': '1.3 GB',
       'description':
           'Small uncensored Qwen3 for phones with 4 GB of RAM; thinks before answering',
