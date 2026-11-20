@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
@@ -26,9 +25,6 @@ Color _appleBlue(BuildContext c) => Theme.of(c).brightness == Brightness.dark
     ? const Color(0xFF0A84FF)
     : const Color(0xFF007AFF);
 
-Color _aiBubble(BuildContext c) => Theme.of(c).brightness == Brightness.dark
-    ? const Color(0xFF1C1C1E)
-    : const Color(0xFFF2F2F7);
 
 Color _sep(BuildContext c) => Theme.of(c).brightness == Brightness.dark
     ? Colors.white.withValues(alpha: 0.08)
