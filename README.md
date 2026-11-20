@@ -37,14 +37,15 @@ If you installed the upstream PrivateLM before, uninstall it first: it uses the 
 
 | Endpoint | Notes |
 |---|---|
-| `POST /v1/chat/completions` | `stream`, `max_tokens`, `stop`, `temperature`, `top_p`, `tools` / `tool_choice`, `response_format` (`json_object`, `json_schema`), one image per request with a vision model |
+| `POST /v1/chat/completions` | `stream`, `max_tokens`, `stop`, `temperature`, `top_p`, `tools` / `tool_choice`, `response_format` (`json_object`, `json_schema`), `stream_options.include_usage`, one image per request with a vision model |
 | `POST /v1/completions` | plain prompt completion, streaming supported |
 | `GET /v1/models` | the loaded model; any `model` name in a request is served by it |
 | `GET /health` | no key needed |
 
 - **One request at a time.** Others wait in a queue (up to 8, for up to 5 minutes) and then get `429` with `Retry-After`.
-- **Tool calling** works through the prompt: tools are described with the `<tools>` / `<tool_call>` convention and the reply is parsed back into OpenAI `tool_calls`. Use a model trained for it (Qwen 2.5/3, Hermes, Llama 3.1+, Mistral). Tool results go back as `role: "tool"` messages as usual.
-- **JSON mode** is an instruction to the model, not a grammar, so validate the output.
+- **Tool calling**: tools are described with the `<tools>` / `<tool_call>` convention and the reply is parsed back into OpenAI `tool_calls`. On Android a llama.cpp grammar makes every call valid JSON with a known function name and arguments that match its `parameters`: from the first token with `tool_choice: "required"` or a named function, from `<tool_call>` on with `auto` (the model may also just answer). Use a model trained for it (Qwen 2.5/3, Hermes, Llama 3.1+, Mistral). Tool results go back as `role: "tool"` messages as usual.
+- **JSON mode**: on Android, `json_object` and `json_schema` are enforced with a grammar, so the reply always parses. Schemas support `type`, `properties`, `required`, `items`, `enum`, `const`, `anyOf`/`oneOf`, `allOf`, local `$ref` and string/array lengths; `pattern`, `format` and number bounds aren't enforced. A schema it can't read is only described to the model (the app log says so). Reasoning models skip their thinking under a grammar.
+- **Usage**: responses include `usage` (prompt and completion tokens); streams add a final usage chunk when `stream_options.include_usage` is true.
 - **Background (Android).** While the server runs and the model stays loaded, it keeps answering with the screen off or another app in front (foreground service, wake lock, Wi-Fi lock). Allow PrivateLM to run without battery limits when the Server tab asks. Swiping the app away from recent apps stops it.
 
 ## Network use

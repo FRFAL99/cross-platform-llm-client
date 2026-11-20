@@ -360,6 +360,145 @@ void main() {
       expect(jsonDecode(content), {'ok': true});
     });
 
+    group('output grammar', () {
+      final weather = {
+        'type': 'function',
+        'function': {
+          'name': 'get_weather',
+          'parameters': {
+            'type': 'object',
+            'properties': {
+              'city': {'type': 'string'}
+            },
+            'required': ['city'],
+          },
+        },
+      };
+      Future<void> chat(Map<String, dynamic> extra) async {
+        final res = await call('POST', '/v1/chat/completions', json: {
+          'messages': [
+            {'role': 'user', 'content': 'hi'}
+          ],
+          ...extra,
+        });
+        expect(res.status, 200, reason: res.body);
+      }
+
+      test('plain requests are not constrained', () async {
+        await chat({});
+        expect(fake.lastGrammar, isNull);
+        expect(fake.lastGrammarTrigger, isNull);
+      });
+
+      test('json_object forces a JSON object', () async {
+        await chat({
+          'response_format': {'type': 'json_object'}
+        });
+        expect(fake.lastGrammar, startsWith('root ::= space? object'));
+        expect(fake.lastGrammarTrigger, isNull);
+      });
+
+      test('json_schema forces the schema', () async {
+        await chat({
+          'response_format': {
+            'type': 'json_schema',
+            'json_schema': {
+              'name': 'answer',
+              'schema': {
+                'type': 'object',
+                'properties': {
+                  'answer': {'type': 'integer'}
+                },
+                'required': ['answer'],
+              },
+            },
+          }
+        });
+        expect(fake.lastGrammar, contains(r'"\"answer\""'));
+        expect(fake.lastGrammar, contains('integer ::='));
+      });
+
+      test('an unreadable schema falls back to instructions', () async {
+        await chat({
+          'response_format': {
+            'type': 'json_schema',
+            'json_schema': {
+              'schema': {'type': 'mystery'}
+            },
+          }
+        });
+        expect(fake.lastGrammar, isNull);
+        expect(fake.lastSystemPrompt, contains('JSON schema'));
+      });
+
+      test('tools with auto start the grammar at <tool_call>', () async {
+        await chat({
+          'tools': [weather]
+        });
+        expect(fake.lastGrammar,
+            contains('call-get_weather'.replaceAll('_', '-')));
+        expect(fake.lastGrammarTrigger, isNotNull);
+        expect(
+            RegExp(fake.lastGrammarTrigger!).hasMatch('x<tool_call>'), isTrue);
+      });
+
+      test('a required call is forced from the first token', () async {
+        await chat({
+          'tools': [weather],
+          'tool_choice': 'required',
+        });
+        expect(fake.lastGrammar, startsWith('root ::= tool-call'));
+        expect(fake.lastGrammarTrigger, isNull);
+      });
+
+      test('tool_choice none leaves the output free', () async {
+        await chat({
+          'tools': [weather],
+          'tool_choice': 'none',
+          'response_format': {'type': 'text'},
+        });
+        expect(fake.lastGrammar, isNull);
+      });
+    });
+
+    test('reports token usage', () async {
+      fake.tokensToEmit = 4;
+      final res = await call('POST', '/v1/chat/completions', json: {
+        'messages': [
+          {'role': 'user', 'content': 'hi'}
+        ],
+      });
+      expect(jsonDecode(res.body)['usage'],
+          {'prompt_tokens': 7, 'completion_tokens': 4, 'total_tokens': 11});
+
+      final completion =
+          await call('POST', '/v1/completions', json: {'prompt': 'hi'});
+      expect(jsonDecode(completion.body)['usage']['completion_tokens'], 4);
+    });
+
+    test('streams usage last when stream_options asks for it', () async {
+      fake.tokensToEmit = 2;
+      final res = await call('POST', '/v1/chat/completions', json: {
+        'messages': [
+          {'role': 'user', 'content': 'hi'}
+        ],
+        'stream': true,
+        'stream_options': {'include_usage': true},
+      });
+      final events = sseEvents(res.body);
+      expect(events.last['choices'], isEmpty);
+      expect(events.last['usage']['completion_tokens'], 2);
+      expect(events[events.length - 2]['choices'][0]['finish_reason'], 'stop');
+
+      final plain = await call('POST', '/v1/chat/completions', json: {
+        'messages': [
+          {'role': 'user', 'content': 'hi'}
+        ],
+        'stream': true,
+      });
+      expect(sseEvents(plain.body).any((e) => e.containsKey('usage')), isFalse);
+    });
+
     test('streams a role chunk first and a finish_reason at the end', () async {
       final res = await call('POST', '/v1/chat/completions', json: {
         'messages': [
@@ -439,6 +578,10 @@ class FakeInference extends GetxService implements InferenceService {
   String? lastPrompt;
   String? lastSystemPrompt;
   List<Map<String, String>>? lastHistory;
+  String? lastGrammar;
+  String? lastGrammarTrigger;
+  @override
+  GenerationUsage? lastUsage;
 
   /// When set, emitted in a few chunks instead of the t0 t1 … tokens.
   String? reply;
@@ -464,8 +607,13 @@ class FakeInference extends GetxService implements InferenceService {
     List<String> stopSequences = const [],
     double? temperature,
     double? topP,
+    String? grammar,
+    String? grammarTrigger,
     void Function(String token)? onToken,
   }) async {
+    lastGrammar = grammar;
+    lastGrammarTrigger = grammarTrigger;
+    lastUsage = null;
     lastMaxTokens = maxTokens;
     lastStop = stopSequences;
     lastTemperature = temperature;
@@ -493,6 +641,8 @@ class FakeInference extends GetxService implements InferenceService {
       onToken?.call(token);
     }
     _running--;
+    lastUsage =
+        GenerationUsage(promptTokens: 7, completionTokens: tokens.length);
     isGenerating.value = false;
     generationSource.value = '';
     return out.toString();

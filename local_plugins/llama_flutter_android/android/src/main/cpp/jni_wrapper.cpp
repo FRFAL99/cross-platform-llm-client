@@ -1012,6 +1012,47 @@ Java_com_write4me_llama_1flutter_1android_LlamaFlutterAndroidPlugin_nativeLoadMm
 
 static jobject g_token_callback = nullptr;
 
+// ── Grammar-constrained sampling (server JSON mode and tool calls) ──────
+
+// Owns the grammar sampler of one generation.
+struct GrammarSampler {
+    llama_sampler * smpl = nullptr;
+    ~GrammarSampler() { if (smpl) llama_sampler_free(smpl); }
+};
+
+// Samples the next token so that it fits the grammar. Like llama.cpp's
+// common sampler: sample normally first and check only that token against
+// the grammar (cheap), and only when it doesn't fit, mask the whole
+// vocabulary with the grammar and sample again.
+static llama_token sampleWithGrammar(llama_sampler * chain, llama_sampler * grammar,
+                                     std::vector<llama_token_data> & cur) {
+    const float * logits = llama_get_logits_ith(g_ctx, -1);
+    const int n_vocab = llama_vocab_n_tokens(g_vocab);
+    auto fill = [&]() {
+        cur.resize(n_vocab);
+        for (llama_token id = 0; id < n_vocab; id++) cur[id] = {id, logits[id], 0.0f};
+    };
+
+    fill();
+    llama_token_data_array arr = {cur.data(), cur.size(), -1, false};
+    llama_sampler_apply(chain, &arr);
+    llama_token id = (arr.selected >= 0) ? arr.data[arr.selected].id : arr.data[0].id;
+
+    llama_token_data single = {id, 1.0f, 0.0f};
+    llama_token_data_array one = {&single, 1, -1, false};
+    llama_sampler_apply(grammar, &one);
+    if (std::isinf(single.logit) && single.logit < 0) {
+        fill();
+        arr = {cur.data(), cur.size(), -1, false};
+        llama_sampler_apply(grammar, &arr);
+        llama_sampler_apply(chain, &arr);
+        id = (arr.selected >= 0) ? arr.data[arr.selected].id : arr.data[0].id;
+    }
+    llama_sampler_accept(grammar, id);
+    llama_sampler_accept(chain, id);
+    return id;
+}
+
 extern "C" JNIEXPORT void JNICALL
 Java_com_write4me_llama_1flutter_1android_LlamaFlutterAndroidPlugin_nativeGenerate(
     JNIEnv* env, jobject thiz,
@@ -1020,6 +1061,7 @@ Java_com_write4me_llama_1flutter_1android_LlamaFlutterAndroidPlugin_nativeGenera
     jdouble repeat_penalty, jdouble frequency_penalty, jdouble presence_penalty, jlong repeat_last_n,
     jlong mirostat, jdouble mirostat_tau, jdouble mirostat_eta,
     jlong seed, jboolean penalize_newline,
+    jstring grammar, jstring grammar_trigger,
     jobject token_callback) {
     
     if (g_token_callback != nullptr) {
@@ -1032,6 +1074,28 @@ Java_com_write4me_llama_1flutter_1android_LlamaFlutterAndroidPlugin_nativeGenera
         jclass exception = env->FindClass("java/lang/IllegalStateException");
         env->ThrowNew(exception, "Model not loaded");
         return;
+    }
+
+    // Build the grammar before any work, so a bad one fails fast.
+    GrammarSampler grammar_sampler;
+    {
+        const std::string gbnf = jstringToStd(env, grammar);
+        const std::string trigger = jstringToStd(env, grammar_trigger);
+        if (!gbnf.empty()) {
+            if (!trigger.empty()) {
+                const char * patterns[] = {trigger.c_str()};
+                grammar_sampler.smpl = llama_sampler_init_grammar_lazy_patterns(
+                    g_vocab, gbnf.c_str(), "root", patterns, 1, nullptr, 0);
+            } else {
+                grammar_sampler.smpl = llama_sampler_init_grammar(g_vocab, gbnf.c_str(), "root");
+            }
+            if (!grammar_sampler.smpl) {
+                LOGE("Invalid grammar:\n%s", gbnf.c_str());
+                jclass exception = env->FindClass("java/lang/IllegalArgumentException");
+                env->ThrowNew(exception, "Invalid output grammar");
+                return;
+            }
+        }
     }
 
     const char* prompt_str = env->GetStringUTFChars(prompt, nullptr);
@@ -1295,11 +1359,15 @@ Java_com_write4me_llama_1flutter_1android_LlamaFlutterAndroidPlugin_nativeGenera
     jmethodID invokeMethod = env->GetMethodID(callbackClass, "invoke", "(Ljava/lang/Object;)Ljava/lang/Object;");
 
     // Generation loop
-    LOGI("Starting generation loop: max_tokens=%lld", max_tokens);
+    LOGI("Starting generation loop: max_tokens=%lld%s", max_tokens,
+         grammar_sampler.smpl ? " (grammar)" : "");
+    std::vector<llama_token_data> grammar_candidates;
     for (int i = 0; i < max_tokens && !g_stop_flag; i++) {
         // A dropped worker leaves garbage logits: never sample from them.
         if (g_cluster_lost) break;
-        llama_token new_token_id = llama_sampler_sample(g_sampler, g_ctx, -1);
+        llama_token new_token_id = grammar_sampler.smpl
+            ? sampleWithGrammar(g_sampler, grammar_sampler.smpl, grammar_candidates)
+            : llama_sampler_sample(g_sampler, g_ctx, -1);
 
         // Check for end of generation (EOS/EOD tokens)
         if (llama_vocab_is_eog(g_vocab, new_token_id)) {

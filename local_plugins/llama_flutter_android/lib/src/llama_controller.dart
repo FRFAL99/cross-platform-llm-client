@@ -7,7 +7,7 @@ class LlamaController implements LlamaFlutterApi {
   final _api = LlamaHostApi();
   StreamController<String>? _tokenController;
   final _progressController = StreamController<double>.broadcast();
-  
+
   bool _isLoading = false;
   bool _isGenerating = false;
 
@@ -79,7 +79,7 @@ class LlamaController implements LlamaFlutterApi {
 
     _isGenerating = true;
     _tokenController = StreamController<String>.broadcast();
-    
+
     // Start generation
     _api.generate(GenerateRequest(
       prompt: prompt,
@@ -133,7 +133,8 @@ class LlamaController implements LlamaFlutterApi {
   }
 
   /// Get list of supported chat templates
-  Future<List<String>> getSupportedTemplates() async => await _api.getSupportedTemplates();
+  Future<List<String>> getSupportedTemplates() async =>
+      await _api.getSupportedTemplates();
 
   /// Generate chat response with automatic template formatting
   Stream<String> generateChat({
@@ -154,6 +155,8 @@ class LlamaController implements LlamaFlutterApi {
     double mirostatEta = 0.1,
     int? seed,
     bool penalizeNewline = true,
+    String? grammar,
+    String? grammarTrigger,
   }) {
     if (_isGenerating) {
       throw StateError('Already generating');
@@ -161,7 +164,7 @@ class LlamaController implements LlamaFlutterApi {
 
     _isGenerating = true;
     _tokenController = StreamController<String>.broadcast();
-    
+
     // Start chat generation
     _api.generateChat(ChatRequest(
       messages: messages,
@@ -181,6 +184,8 @@ class LlamaController implements LlamaFlutterApi {
       mirostatEta: mirostatEta,
       seed: seed,
       penalizeNewline: penalizeNewline,
+      grammar: grammar,
+      grammarTrigger: grammarTrigger,
     ));
 
     return _tokenController!.stream;
@@ -208,12 +213,12 @@ class LlamaController implements LlamaFlutterApi {
   }
 
   /// Register a custom chat template
-  /// 
+  ///
   /// Template content should use placeholders:
   /// - {system} for system messages
   /// - {user} for user messages
   /// - {assistant} for assistant messages
-  /// 
+  ///
   /// Example: "<s>[INST]{user}[/INST]{assistant}</s>"
   Future<void> registerCustomTemplate(String name, String content) async {
     await _api.registerCustomTemplate(name, content);
@@ -267,4 +272,5 @@ class LlamaController implements LlamaFlutterApi {
   @override
   void onLoadProgress(double progress) {
     _progressController.add(progress);
-  }}
+  }
+}
