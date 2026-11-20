@@ -109,6 +109,7 @@ class AppConstants {
       'size': '7.1 GB',
       'description': 'Moonshot AI (Kimi) — 3B active MoE, high quality',
       'template': 'chatml',
+      'license': 'MIT',
     },
     {
       'name': 'Gemma 4 26B-A4B Instruct (UD-IQ2_M)',
@@ -121,6 +122,7 @@ class AppConstants {
       'description':
           'Google Gemma 4 MoE, 4B active — too big for one phone: run it as a Phone cluster master with workers (~11 GB free across devices)',
       'template': 'gemma',
+      'license': 'Apache 2.0',
     },
     {
       'name': 'Qwen2.5-3B Instruct (Q4_K_M)',
@@ -132,6 +134,7 @@ class AppConstants {
       'size': '2.1 GB',
       'description': 'Best balance of speed and quality for mobile',
       'template': 'chatml',
+      'license': 'Qwen Research License (non-commercial use only)',
     },
     {
       'name': 'LFM2.5 1.2B Instruct (Q4_K_M)',
@@ -145,6 +148,7 @@ class AppConstants {
       'description':
           'Liquid AI\'s fast on-device model — quick replies on mid-range phones',
       'template': 'chatml',
+      'license': 'LFM Open License v1.0',
     },
     {
       'name': 'LFM2.5-VL 1.6B (Q4_K_M)',
@@ -163,6 +167,7 @@ class AppConstants {
           'https://huggingface.co/LiquidAI/LFM2.5-VL-1.6B-GGUF/resolve/main/mmproj-LFM2.5-VL-1.6b-Q8_0.gguf',
       'mmproj_sha256':
           '2ce89e610c56f3198ece2b86cf61743a08b9307279c89125eb2412ebb908689d',
+      'license': 'LFM Open License v1.0',
     },
     {
       'name': 'Qwen2-VL-2B Instruct (Q4_K_M)',
@@ -181,6 +186,7 @@ class AppConstants {
           'https://huggingface.co/ggml-org/Qwen2-VL-2B-Instruct-GGUF/resolve/main/mmproj-Qwen2-VL-2B-Instruct-Q8_0.gguf',
       'mmproj_sha256':
           'a0ad91f00a7a80dcf84d719a61b00ee2e07b71794f4ee2dfa81a254621a8c418',
+      'license': 'Apache 2.0',
     },
     {
       'name': 'Gemma 4 E2B Uncensored Vision (Q2_K_P)',
@@ -199,6 +205,7 @@ class AppConstants {
           'https://huggingface.co/HauhauCS/Gemma-4-E2B-Uncensored-HauhauCS-Aggressive/resolve/main/mmproj-Gemma-4-E2B-Uncensored-HauhauCS-Aggressive-f16.gguf',
       'mmproj_sha256':
           '628b7e999f89beef70b32396ae84f59c096e867747d7901f0134064ff672e290',
+      'license': 'Apache 2.0 (Gemma 4 base)',
     },
     {
       'name': 'Gemma 3 4B Instruct Vision (Q4_K_M)',
@@ -217,6 +224,7 @@ class AppConstants {
           'https://huggingface.co/ggml-org/gemma-3-4b-it-GGUF/resolve/main/mmproj-model-f16.gguf',
       'mmproj_sha256':
           '8c0fb064b019a6972856aaae2c7e4792858af3ca4561be2dbf649123ba6c40cb',
+      'license': 'Gemma Terms of Use',
     },
     {
       'name': 'Phi-3.5 Mini Instruct (Q4_K_M)',
@@ -228,6 +236,7 @@ class AppConstants {
       'size': '2.2 GB',
       'description': 'Microsoft\'s compact reasoning model',
       'template': 'phi',
+      'license': 'MIT',
     },
     {
       'name': 'Gemma 3 1B Instruct (Q4_0)',
@@ -240,6 +249,7 @@ class AppConstants {
       'description':
           'Google\'s newer compact chat model — fast, small, and capable',
       'template': 'gemma',
+      'license': 'Gemma Terms of Use',
     },
     {
       'name': 'Qwen3 4B Abliterated (Q4_K_M)',
@@ -253,6 +263,7 @@ class AppConstants {
       'description':
           'Qwen3 4B with refusals removed (abliterated) — the best uncensored pick for 6 GB+ phones; thinks before answering',
       'template': 'chatml',
+      'license': 'Apache 2.0',
     },
     {
       'name': 'Gemma 3 4B Abliterated (Q4_K_M)',
@@ -265,6 +276,7 @@ class AppConstants {
       'description':
           'Gemma 3 4B with refusals removed (abliterated) — answers directly, good at writing',
       'template': 'gemma',
+      'license': 'Gemma Terms of Use',
     },
     {
       'name': 'Qwen3 1.7B Abliterated (Q4_K_M)',
@@ -277,6 +289,7 @@ class AppConstants {
       'description':
           'Small uncensored Qwen3 for phones with 4 GB of RAM; thinks before answering',
       'template': 'chatml',
+      'license': 'Apache 2.0',
     },
     {
       'name': 'Llama-3.2-1B Instruct (Q4_K_M)',
@@ -288,6 +301,7 @@ class AppConstants {
       'size': '0.8 GB',
       'description': 'Ultra-lightweight text model',
       'template': 'llama3',
+      'license': 'Llama 3.2 Community License',
     },
   ];
 }

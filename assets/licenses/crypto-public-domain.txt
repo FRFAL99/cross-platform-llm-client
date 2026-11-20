@@ -1,0 +1,11 @@
+The phone-cluster encryption (ggml-rpc/privatelm-crypto.h) follows two
+public-domain works:
+
+- TweetNaCl (X25519), by Daniel J. Bernstein, Bernard van Gastel,
+  Wesley Janssen, Tanja Lange, Peter Schwabe and Sjaak Smetsers.
+  Public domain. https://tweetnacl.cr.yp.to
+
+- poly1305-donna, 32-bit version, by Andrew Moon.
+  Public domain. https://github.com/floodyberry/poly1305-donna
+
+ChaCha20-Poly1305 follows RFC 8439.

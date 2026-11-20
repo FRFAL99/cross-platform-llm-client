@@ -178,6 +178,17 @@ flutter build web --release
 
 ---
 
-## License
+## License and credits
 
 MIT — see [LICENSE](./LICENSE) for details.
+
+PrivateLM is a fork of [orailnoor/cross-platform-llm-client](https://github.com/orailnoor/cross-platform-llm-client)
+by orailnoor and techjarves (MIT). Inference runs on [llama.cpp](https://github.com/ggml-org/llama.cpp)
+(MIT, the ggml authors), through a modified copy of the `llama_flutter_android`
+plugin (MIT, dragneel2074). Third-party components, fonts and the licenses of
+the catalogue models are listed in [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md);
+the app shows them under Settings › About › Open-source licenses.
+
+Models are downloaded from Hugging Face and keep their own licenses: check a
+model's license before using it commercially (Qwen2.5-3B, for example, is for
+non-commercial use only).

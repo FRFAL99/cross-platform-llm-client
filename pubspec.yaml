@@ -67,6 +67,8 @@ flutter:
   assets:
     - assets/
     - assets/icons/
+    - assets/licenses/
+    - assets/licenses/pdfium/
     - assets/fonts/Inter-OFL.txt
     - assets/fonts/FiraCode-OFL.txt
 
