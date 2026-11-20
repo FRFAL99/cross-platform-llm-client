@@ -678,10 +678,10 @@ class MainActivity : FlutterActivity() {
 
         val filename = displayNameFor(uri)
         val lower = filename.lowercase()
-        if (!lower.endsWith(".gguf") && !lower.endsWith(".litertlm") && !lower.endsWith(".safetensors")) {
+        if (!lower.endsWith(".gguf")) {
             finishImportError(
                 "UNSUPPORTED_MODEL",
-                "Only .gguf, .litertlm, and .safetensors files can be imported."
+                "Only .gguf files can be imported."
             )
             return
         }
@@ -744,7 +744,7 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    /** Model files (.gguf, .litertlm, .safetensors) in a picked folder and
+    /** Model files (.gguf) in a picked folder and
      *  up to three levels of subfolders. */
     private fun scanModelTree(treeUri: Uri): List<Map<String, Any>> {
         val found = mutableListOf<Map<String, Any>>()
@@ -766,9 +766,7 @@ class MainActivity : FlutterActivity() {
                         continue
                     }
                     val lower = name.lowercase()
-                    if (!lower.endsWith(".gguf") && !lower.endsWith(".litertlm") &&
-                        !lower.endsWith(".safetensors")
-                    ) continue
+                    if (!lower.endsWith(".gguf")) continue
                     val size = if (c.isNull(3)) 0L else c.getLong(3)
                     if (size <= 0L) continue
                     found.add(

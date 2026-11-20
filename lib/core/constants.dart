@@ -4,6 +4,7 @@ class AppConstants {
   // Hive Box Names
   static const String chatSessionsBox = 'chat_sessions';
   static const String chatMessagesBox = 'chat_messages';
+  /// Legacy box of the removed task feature, deleted on startup.
   static const String tasksBox = 'tasks';
   static const String settingsBox = 'settings';
 
@@ -15,7 +16,6 @@ class AppConstants {
   static const String keyAnthropicKey = 'anthropic_api_key';
   static const String keyGoogleKey = 'google_api_key';
   static const String keyKimiKey = 'kimi_api_key';
-  static const String keyStabilityKey = 'stability_api_key';
   static const String keyNvidiaKey = 'nvidia_api_key';
   static const String keyOpenRouterKey = 'openrouter_api_key';
   static const String keyDeepSeekKey = 'deepseek_api_key';
@@ -28,7 +28,6 @@ class AppConstants {
   static const String keyAnthropicModel = 'anthropic_model';
   static const String keyGoogleModel = 'google_model';
   static const String keyKimiModel = 'kimi_model';
-  static const String keyStabilityModel = 'stability_model';
   static const String keyNvidiaModel = 'nvidia_model';
   static const String keyOpenRouterModel = 'openrouter_model';
   static const String keyDeepSeekModel = 'deepseek_model';
@@ -38,18 +37,15 @@ class AppConstants {
   static const String keyLocalModelName = 'local_model_name';
   static const String keyLocalModelRuntime = 'local_model_runtime';
   static const String keyLocalModelBackend = 'local_model_backend';
-  static const String keyLiteRtPerformanceMode = 'litert_performance_mode';
-  static const String keyLiteRtGpuWarningAccepted =
-      'litert_gpu_warning_accepted';
-  static const String keyLiteRtGpuLoadPending = 'litert_gpu_load_pending';
-  static const String keyLiteRtGpuCrashDetected = 'litert_gpu_crash_detected';
+  /// Performance mode for local models: 'auto_fast', 'gpu_fast' or
+  /// 'cpu_safe'. The stored key keeps its old LiteRT-era name so existing
+  /// settings survive.
+  static const String keyPerformanceMode = 'litert_performance_mode';
 
   /// Set while a GGUF model runs on the GPU until its first reply succeeds;
   /// still set on the next load means the GPU crashed the app.
   static const String keyGgufGpuPending = 'gguf_gpu_pending';
   static const String keyStopSequences = 'stop_sequences';
-  static const String keyImageModelPath = 'image_model_path';
-  static const String keyImageModelName = 'image_model_name';
   static const String keyTemperature = 'temperature';
   static const String keyMaxTokens = 'max_tokens';
   static const String keyContextSize = 'context_size';
@@ -60,31 +56,19 @@ class AppConstants {
   static const String keySkippedUpdateVersion = 'skipped_update_version';
 
   /// GitHub repository whose releases ship the Android APKs.
-  static const String githubRepo = 'orailnoor/cross-platform-llm-client';
+  static const String githubRepo = 'FRFAL99/cross-platform-llm-client';
   static const String keyServerApiKey = 'server_api_key';
   static const String keyServerUseApiKey = 'server_use_api_key';
   static const String keyServerAllowNetwork = 'server_allow_network';
   static const String keyClusterEnabled = 'cluster_enabled';
   static const String keyClusterWorkers = 'cluster_workers';
-  static const String keyImageSteps = 'image_steps';
-  static const String keyImageGenForceCpu = 'image_gen_force_cpu';
-  static const String keyImageGenBackend = 'image_gen_backend';
-  static const String keyImageGenGpuGuardMb = 'image_gen_gpu_guard_mb';
-  static const String keyImageGenSize = 'image_gen_size';
-  static const String keyImageGenQuantization = 'image_gen_quantization';
   static const String keyFontScale = 'font_scale';
-  static const String keyBatchModeWarningAccepted =
-      'batch_mode_warning_accepted';
 
   // Default Model Config
   static const double defaultTemperature = 0.7;
   static const int defaultMaxTokens = 1024;
   static const int defaultContextSize = 2048;
-  static const String defaultLiteRtPerformanceMode = 'auto_fast';
-  static const int defaultImageSteps = 1;
-  static const bool defaultImageGenForceCpu = true;
-  static const int defaultImageGenGpuGuardMb = 1843; // 1.8 GB
-  static const int defaultImageGenSize = 0; // 0 = Auto recommended
+  static const String defaultPerformanceMode = 'auto_fast';
   static const double defaultFontScale =
       0.95; // 4th slider stop, "Small" default
 
@@ -106,61 +90,6 @@ class AppConstants {
 
   // Available Models for Download
   static const List<Map<String, String>> availableModels = [
-    {
-      'name': 'Qwen 3 0.6B (LiteRT-LM)',
-      'filename': 'Qwen3-0.6B.litertlm',
-      'url':
-          'https://huggingface.co/litert-community/Qwen3-0.6B/resolve/main/Qwen3-0.6B.litertlm',
-      'size': '586 MB',
-      'description':
-          'Smallest LiteRT-LM general-purpose chat model for low-RAM phones',
-      'template': 'litert',
-      'runtime': 'litert',
-    },
-    {
-      'name': 'Qwen 2.5 1.5B Instruct (LiteRT-LM)',
-      'filename': 'Qwen2.5-1.5B-Instruct_multi-prefill-seq_q8_ekv4096.litertlm',
-      'url':
-          'https://huggingface.co/litert-community/Qwen2.5-1.5B-Instruct/resolve/main/Qwen2.5-1.5B-Instruct_multi-prefill-seq_q8_ekv4096.litertlm',
-      'size': '1.49 GB',
-      'description': 'Balanced LiteRT-LM chat model with int8 quantization',
-      'template': 'litert',
-      'runtime': 'litert',
-    },
-    {
-      'name': 'DeepSeek R1 Distill Qwen 1.5B (LiteRT-LM)',
-      'filename':
-          'DeepSeek-R1-Distill-Qwen-1.5B_multi-prefill-seq_q8_ekv4096.litertlm',
-      'url':
-          'https://huggingface.co/litert-community/DeepSeek-R1-Distill-Qwen-1.5B/resolve/main/DeepSeek-R1-Distill-Qwen-1.5B_multi-prefill-seq_q8_ekv4096.litertlm',
-      'size': '1.71 GB',
-      'description': 'Reasoning-focused LiteRT-LM model with int8 quantization',
-      'template': 'litert',
-      'runtime': 'litert',
-    },
-    {
-      'name': 'Gemma 4 E2B Instruct (LiteRT-LM)',
-      'filename': 'gemma-4-E2B-it.litertlm',
-      'recommended': 'vision',
-      'url':
-          'https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm',
-      'size': '2.46 GB',
-      'description': 'Strong general chat LiteRT-LM model from Google Gemma',
-      'template': 'litert',
-      'runtime': 'litert',
-      'vision': 'true',
-    },
-    {
-      'name': 'Gemma 4 E4B Instruct (LiteRT-LM)',
-      'filename': 'gemma-4-E4B-it.litertlm',
-      'url':
-          'https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm/resolve/main/gemma-4-E4B-it.litertlm',
-      'size': '3.40 GB',
-      'description': 'Highest quality LiteRT-LM option; needs about 5 GB RAM',
-      'template': 'litert',
-      'runtime': 'litert',
-      'vision': 'true',
-    },
     {
       'name': 'Kimi Moonlight 16B-A3B (Q3_K_S)',
       'filename': 'moonlight-16b-a3b-instruct-q3_k_s.gguf',
@@ -321,73 +250,6 @@ class AppConstants {
       'description': 'Ultra-lightweight text model',
       'template': 'llama3',
     },
-    {
-      'name': 'DreamShaper 8 LCM (SD 1.5)',
-      'filename': 'DreamShaper8_LCM.safetensors',
-      'url':
-          'https://huggingface.co/Lykon/dreamshaper-8-lcm/resolve/main/DreamShaper8_LCM.safetensors',
-      'size': '2.0 GB',
-      'description': 'Extremely fast 4-step local image generation',
-      'template': 'sd',
-    },
-    {
-      'name': 'CyberRealistic V8 FP16 (SD 1.5)',
-      'filename': 'CyberRealistic_V8_FP16.safetensors',
-      'recommended': 'image',
-      'url':
-          'https://huggingface.co/cyberdelia/CyberRealistic/resolve/main/CyberRealistic_V8_FP16.safetensors',
-      'size': '2.0 GB',
-      'description':
-          'Photorealistic, uncensored local image generation — FP16 for mobile',
-      'template': 'sd',
-    },
-    {
-      'name': 'CyberRealistic (Apple CoreML FP16)',
-      'filename': 'cyberrealistic.coreml.zip',
-      'url':
-          'https://huggingface.co/orailnooor/cyberrealistic-coreml/resolve/main/cyberrealistic.coreml.zip?download=true',
-      'size': '2.0 GB',
-      'description':
-          'Optimized for Apple devices with M-series chips or 8GB+ RAM',
-      'template': 'sd',
-    },
-    {
-      'name': 'CyberRealistic (Apple CoreML 6-bit)',
-      'filename': 'cyberrealistic-6bit.coreml.zip',
-      'url':
-          'https://huggingface.co/orailnooor/cyberrealistic-coreml/resolve/main/cyberrealistic-6bit.coreml.zip?download=true',
-      'size': '855 MB',
-      'description':
-          'Compressed 6-bit model optimized for Apple devices with 4GB/6GB RAM',
-      'template': 'sd',
-    },
-    {
-      'name': 'Realistic Vision V5.1 fp16 (SD 1.5)',
-      'filename': 'Realistic_Vision_V5.1_fp16-no-ema.safetensors',
-      'url':
-          'https://huggingface.co/SG161222/Realistic_Vision_V5.1_noVAE/resolve/main/Realistic_Vision_V5.1_fp16-no-ema.safetensors',
-      'size': '2.0 GB',
-      'description': 'Highly popular photorealistic portrait and scene model',
-      'template': 'sd',
-    },
-    {
-      'name': 'AbsoluteReality 1.8.1 pruned (SD 1.5)',
-      'filename': 'AbsoluteReality_1.8.1_pruned.safetensors',
-      'url':
-          'https://huggingface.co/Lykon/AbsoluteReality/resolve/main/AbsoluteReality_1.8.1_pruned.safetensors',
-      'size': '2.0 GB',
-      'description': 'Photorealistic general-purpose image generation',
-      'template': 'sd',
-    },
-    {
-      'name': 'AnyLoRA (SD 1.5)',
-      'filename': 'AnyLoRA_noVae_fp16-pruned.safetensors',
-      'url':
-          'https://huggingface.co/Lykon/AnyLoRA/resolve/main/AnyLoRA_noVae_fp16-pruned.safetensors',
-      'size': '2.0 GB',
-      'description': 'Highly versatile Anime / Stylized image generator',
-      'template': 'sd',
-    },
   ];
 
   // Cloud API Endpoints
@@ -399,8 +261,6 @@ class AppConstants {
       'https://generativelanguage.googleapis.com/v1beta/models';
   static const String kimiEndpoint =
       'https://api.moonshot.ai/v1/chat/completions';
-  static const String stabilityEndpoint =
-      'https://api.stability.ai/v2beta/stable-image/generate/sd3';
   static const String nvidiaEndpoint = 'https://integrate.api.nvidia.com/v1';
   static const String openRouterEndpoint = 'https://openrouter.ai/api/v1';
   static const String deepSeekEndpoint = 'https://api.deepseek.com';

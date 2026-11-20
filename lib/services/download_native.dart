@@ -24,13 +24,7 @@ Future<List<String>> getDownloadedModels(String modelsDir) async {
   if (!await dir.exists()) return [];
   return dir
       .listSync()
-      .where((f) =>
-          f.path.endsWith('.gguf') ||
-          f.path.endsWith('.litertlm') ||
-          f.path.endsWith('.safetensors') ||
-          f.path.endsWith('.coreml') ||
-          f.path.endsWith('.mlpackage') ||
-          f.path.endsWith('.mlmodelc'))
+      .where((f) => f.path.endsWith('.gguf'))
       .map((f) => f.path.split('/').last)
       .toList();
 }

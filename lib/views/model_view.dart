@@ -9,12 +9,11 @@ import '../core/ui.dart';
 import '../models/ai_model.dart';
 import '../services/download_service.dart';
 import '../services/inference_service.dart';
-import '../services/local_image_service.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
 
 String _prettyModel(String name) => name.replaceAll(
-    RegExp(r'\.(gguf|litertlm|task|bin)$', caseSensitive: false), '');
+    RegExp(r'\.(gguf|bin)$', caseSensitive: false), '');
 
 /// Input decoration for fields inside sheets. In dark mode the sheet itself
 /// is the default field colour, so use a translucent fill that stays visible.
@@ -118,10 +117,8 @@ class ModelView extends GetView<ModelController> {
   Widget _buildLocalFilterChips(BuildContext context) {
     final labels = [
       ('general', 'Chat'),
-      ('image', 'Image'),
       ('uncensored', 'Uncensored'),
       ('vision', 'Vision'),
-      if (ModelController.supportsAppleNpu) ('npu', 'Apple NPU'),
     ];
     return Obx(() {
       final selected = controller.localFilter.value.isEmpty
@@ -141,7 +138,7 @@ class ModelView extends GetView<ModelController> {
     showAppSheet<void>(
       context,
       title: 'Import model',
-      subtitle: 'Add .gguf, .litertlm or .safetensors files from your phone.',
+      subtitle: 'Add .gguf files from your phone.',
       builder: (ctx) => AppGroup(dividerIndent: 60, children: [
         AppRow(
           icon: Icons.insert_drive_file_outlined,
@@ -173,7 +170,7 @@ class ModelView extends GetView<ModelController> {
     if (files == null || !context.mounted) return;
     if (files.isEmpty) {
       showToast('No models found',
-          'That folder has no .gguf, .litertlm or .safetensors files.',
+          'That folder has no .gguf files.',
           tone: ToastTone.warning);
       return;
     }
@@ -216,19 +213,13 @@ class ModelView extends GetView<ModelController> {
         );
       }
       final inference = Get.find<InferenceService>();
-      final localImage = Get.find<LocalImageService>();
       final busy =
           controller.isImporting.value || inference.isLoadingModel.value;
 
       final String name;
       final String meta;
       final IconData icon;
-      if (localImage.isModelLoaded.value) {
-        name = localImage.loadedModelName.value;
-        meta =
-            'Loaded · Image generation · ${localImage.isUsingGpu.value ? 'GPU accelerated' : 'CPU'}';
-        icon = Icons.image_outlined;
-      } else if (inference.isModelLoaded.value) {
+      if (inference.isModelLoaded.value) {
         name = inference.loadedModelName.value;
         final gpu = inference.gpuName.value;
         meta = inference.isGpuAccelerated.value
@@ -412,18 +403,10 @@ class ModelView extends GetView<ModelController> {
     return Obx(() {
       final t = AppTokens.of(context);
       final inference = Get.find<InferenceService>();
-      final localImage = Get.find<LocalImageService>();
       final textLoading = inference.isLoadingModel.value &&
           inference.loadingModelName.value == model.filename;
-      // Image models report no percentage, so their bar is indeterminate.
-      final unzipped = model.filename.toLowerCase().endsWith('.zip')
-          ? model.filename.substring(0, model.filename.length - 4)
-          : model.filename;
-      final imageLoading = localImage.isLoadingModel.value &&
-          (localImage.loadingModelName.value == model.filename ||
-              localImage.loadingModelName.value == unzipped);
-      if (!textLoading && !imageLoading) return const SizedBox.shrink();
-      final progress = textLoading ? inference.modelLoadProgress.value : 0.0;
+      if (!textLoading) return const SizedBox.shrink();
+      final progress = inference.modelLoadProgress.value;
 
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1401,9 +1384,6 @@ class ModelView extends GetView<ModelController> {
             icon: Icons.star_rounded, color: AppTokens.of(context).accent),
       if (controller.isVisionModel(model))
         const AppTag('Vision', icon: Icons.visibility_outlined),
-      if (controller.isImageModel(model))
-        const AppTag('Image', icon: Icons.image_outlined),
-      if (controller.isNpuModel(model)) const AppTag('NPU'),
       if (controller.isUncensoredModel(model)) const AppTag('Uncensored'),
       if (model.isImported) const AppTag('Imported'),
       if (model.isCustom) const AppTag('Custom'),
@@ -1500,31 +1480,18 @@ class ModelView extends GetView<ModelController> {
 
       final isDownloaded = controller.isDownloaded(model.filename);
       final inference = Get.find<InferenceService>();
-      final localImage = Get.find<LocalImageService>();
-      final isActive = inference.loadedModelName.value == actualFilename ||
-          localImage.loadedModelName.value == actualFilename;
+      final isActive = inference.loadedModelName.value == actualFilename;
       final isCurrentlyDownloading =
           controller.isDownloadingModel(model.filename);
-      final isAnyModelLoading =
-          inference.isLoadingModel.value || localImage.isLoadingModel.value;
-      final isThisTextModelLoading = inference.isLoadingModel.value &&
+      final isAnyModelLoading = inference.isLoadingModel.value;
+      final isThisModelLoading = inference.isLoadingModel.value &&
           inference.loadingModelName.value == actualFilename;
-      final isThisImageModelLoading = localImage.isLoadingModel.value &&
-          localImage.loadingModelName.value == actualFilename;
-      final isThisModelLoading =
-          isThisTextModelLoading || isThisImageModelLoading;
       final disableActions = controller.isImporting.value ||
           isAnyModelLoading ||
           isCurrentlyDownloading;
       final loadPercent = (inference.modelLoadProgress.value * 100)
           .clamp(0.0, 100.0)
           .toStringAsFixed(0);
-
-      final runtime = controller.isLiteRtModel(model)
-          ? 'LiteRT'
-          : controller.isLlamaModel(model)
-              ? 'GGUF'
-              : null;
 
       // Primary action (right). While downloading: a progress ring with the
       // percentage (cancel lives in the pinned downloads card at the top).
@@ -1533,8 +1500,7 @@ class ModelView extends GetView<ModelController> {
         primaryAction = _DownloadRing(filename: model.filename);
       } else if (isDownloaded) {
         if (isThisModelLoading) {
-          primaryAction = Text(
-              isThisImageModelLoading ? 'Loading…' : '$loadPercent%',
+          primaryAction = Text('$loadPercent%',
               style: t.small.copyWith(
                   color: t.accent,
                   fontWeight: FontWeight.w600,
@@ -1615,7 +1581,6 @@ class ModelView extends GetView<ModelController> {
           (library || filter != 'uncensored');
       final subtitle = [
         controller.modelSizeLabel(model),
-        if (runtime == 'LiteRT') 'LiteRT',
         if (variant != null) variant,
         if (!library && controller.isVisionModel(model) && filter != 'vision')
           'Vision',
@@ -1643,10 +1608,7 @@ class ModelView extends GetView<ModelController> {
               children: [
                 Row(
                   children: [
-                    _ModelAvatar(
-                        name: name,
-                        image: controller.isImageModel(model),
-                        loaded: isActive),
+                    _ModelAvatar(name: name, loaded: isActive),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
@@ -1719,13 +1681,8 @@ class ModelView extends GetView<ModelController> {
         .toList();
     if (models.isEmpty) return [_buildEmptyLibrary(context)];
     final t = AppTokens.of(context);
-    final image = models.where(controller.isImageModel).toList();
-    final vision = models
-        .where(
-            (m) => !controller.isImageModel(m) && controller.isVisionModel(m))
-        .toList();
-    final chat =
-        models.where((m) => !image.contains(m) && !vision.contains(m)).toList();
+    final vision = models.where(controller.isVisionModel).toList();
+    final chat = models.where((m) => !vision.contains(m)).toList();
     var first = true;
     List<Widget> group(String title, List<AiModel> list) {
       if (list.isEmpty) return const [];
@@ -1752,7 +1709,6 @@ class ModelView extends GetView<ModelController> {
       ),
       ...group('Chat', chat),
       ...group('Vision', vision),
-      ...group('Image', image),
     ];
   }
 
@@ -1783,14 +1739,13 @@ class ModelView extends GetView<ModelController> {
     'general': 'Best for chat',
     'vision': 'Understands photos',
     'uncensored': 'No filters',
-    'image': 'Creates images',
   };
 
   /// Horizontal row of the recommended pick for each type.
   Widget _buildFeatured(BuildContext context) {
     final t = AppTokens.of(context);
     final picks = <AiModel>[];
-    for (final type in ['general', 'vision', 'uncensored', 'image']) {
+    for (final type in ['general', 'vision', 'uncensored']) {
       final m = controller.availableModels
           .firstWhereOrNull((m) => m.recommendedFor.contains(type));
       if (m != null && !picks.contains(m)) picks.add(m);
@@ -1853,10 +1808,7 @@ class ModelView extends GetView<ModelController> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _ModelAvatar(
-                      name: name,
-                      image: controller.isImageModel(model),
-                      size: 44),
+                  _ModelAvatar(name: name, size: 44),
                   const Spacer(),
                   Text(name,
                       maxLines: 2,
@@ -1893,12 +1845,11 @@ class ModelView extends GetView<ModelController> {
     final quant = _quantPattern.firstMatch(raw);
     if (quant != null) variant = quant.group(0)!.toUpperCase();
 
-    // Parenthesised extras: drop the quant / runtime, keep e.g. "SD 1.5".
+    // Parenthesised extras: drop the quant, keep the rest.
     final extras = <String>[];
     raw = raw.replaceAllMapped(RegExp(r'\(([^)]*)\)'), (m) {
       final inner = m.group(1)!.trim();
-      if (!_quantPattern.hasMatch(inner) &&
-          !inner.toLowerCase().startsWith('litert')) {
+      if (!_quantPattern.hasMatch(inner)) {
         extras.add(inner);
       }
       return ' ';
@@ -2426,14 +2377,10 @@ class _FolderImportListState extends State<_FolderImportList> {
 /// apart at a glance.
 class _ModelAvatar extends StatelessWidget {
   final String name;
-  final bool image;
   final bool loaded;
   final double size;
   const _ModelAvatar(
-      {required this.name,
-      this.image = false,
-      this.loaded = false,
-      this.size = 38});
+      {required this.name, this.loaded = false, this.size = 38});
 
   static const _families = <(String, String, Color)>[
     ('gemma', 'Ge', Color(0xFF4285F4)),
@@ -2456,13 +2403,6 @@ class _ModelAvatar extends StatelessWidget {
 
   (String, Color) _style() {
     final lower = name.toLowerCase();
-    if (image) {
-      final letters = name.replaceAll(RegExp(r'[^A-Za-z]'), '');
-      return (
-        letters.length >= 2 ? letters.substring(0, 2) : 'SD',
-        const Color(0xFFEC4899)
-      );
-    }
     for (final (key, mono, color) in _families) {
       if (lower.contains(key)) return (mono, color);
     }

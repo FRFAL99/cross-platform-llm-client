@@ -72,7 +72,7 @@ class ServerController extends GetxController {
     if (isRunning.value || isStarting.value) return;
     lastError.value = null;
     if (!hasLocalModel) {
-      lastError.value = 'Load a local GGUF or LiteRT-LM model first.';
+      lastError.value = 'Load a local GGUF model first.';
       showToast('Server not started', lastError.value!,
           tone: ToastTone.warning);
       return;

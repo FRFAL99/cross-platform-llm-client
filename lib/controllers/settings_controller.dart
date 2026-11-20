@@ -10,9 +10,6 @@ import '../core/haptics.dart';
 import '../core/ui.dart';
 import '../services/hive_service.dart';
 import '../services/app_log_service.dart';
-import '../services/local_image_service.dart';
-import '../ffi/sd_ffi_bindings.dart';
-import 'package:sd_flutter_android/sd_flutter_android.dart';
 
 class SettingsController extends GetxController {
   final HiveService _hive = Get.find<HiveService>();
@@ -25,7 +22,6 @@ class SettingsController extends GetxController {
   final anthropicKey = ''.obs;
   final googleKey = ''.obs;
   final kimiKey = ''.obs;
-  final stabilityKey = ''.obs;
   final nvidiaKey = ''.obs;
   final openRouterKey = ''.obs;
   final deepSeekKey = ''.obs;
@@ -38,7 +34,6 @@ class SettingsController extends GetxController {
   final anthropicModel = 'claude-sonnet-4-6'.obs;
   final googleModel = 'gemini-2.5-flash'.obs;
   final kimiModel = 'kimi-k2.6'.obs;
-  final stabilityModel = 'sd3.5-flash'.obs;
   final nvidiaModel = 'meta/llama-3.1-8b-instruct'.obs;
   final openRouterModel = 'openai/gpt-4o-mini'.obs;
   final deepSeekModel = 'deepseek-v4-flash'.obs;
@@ -49,14 +44,8 @@ class SettingsController extends GetxController {
   final temperature = 0.1.obs;
   final maxTokens = 512.obs;
   final contextSize = 2048.obs;
-  final liteRtPerformanceMode = AppConstants.defaultLiteRtPerformanceMode.obs;
+  final performanceMode = AppConstants.defaultPerformanceMode.obs;
 
-  final imageSteps = 1.obs;
-  final imageGenForceCpu = AppConstants.defaultImageGenForceCpu.obs;
-  final imageGenBackend = Backend.cpu.obs;
-  final imageGpuVendor = 'detecting'.obs;
-  final imageGenGpuGuardMb = AppConstants.defaultImageGenGpuGuardMb.obs;
-  final imageGenSize = AppConstants.defaultImageGenSize.obs;
   final fontScale = AppConstants.defaultFontScale.obs;
   final hapticsEnabled = true.obs;
   final appVersion = ''.obs;
@@ -66,7 +55,6 @@ class SettingsController extends GetxController {
   final anthropicKeyController = TextEditingController();
   final googleKeyController = TextEditingController();
   final kimiKeyController = TextEditingController();
-  final stabilityKeyController = TextEditingController();
   final nvidiaKeyController = TextEditingController();
   final openRouterKeyController = TextEditingController();
   final deepSeekKeyController = TextEditingController();
@@ -83,7 +71,6 @@ class SettingsController extends GetxController {
   final anthropicModelController = TextEditingController();
   final googleModelController = TextEditingController();
   final kimiModelController = TextEditingController();
-  final stabilityModelController = TextEditingController();
   final nvidiaModelController = TextEditingController();
   final openRouterModelController = TextEditingController();
   final deepSeekModelController = TextEditingController();
@@ -114,7 +101,6 @@ class SettingsController extends GetxController {
     anthropicKeyController.dispose();
     googleKeyController.dispose();
     kimiKeyController.dispose();
-    stabilityKeyController.dispose();
     nvidiaKeyController.dispose();
     openRouterKeyController.dispose();
     deepSeekKeyController.dispose();
@@ -127,7 +113,6 @@ class SettingsController extends GetxController {
     anthropicModelController.dispose();
     googleModelController.dispose();
     kimiModelController.dispose();
-    stabilityModelController.dispose();
     nvidiaModelController.dispose();
     openRouterModelController.dispose();
     deepSeekModelController.dispose();
@@ -150,7 +135,6 @@ class SettingsController extends GetxController {
     anthropicKey.value = _hive.getSetting(AppConstants.keyAnthropicKey) ?? '';
     googleKey.value = _hive.getSetting(AppConstants.keyGoogleKey) ?? '';
     kimiKey.value = _hive.getSetting(AppConstants.keyKimiKey) ?? '';
-    stabilityKey.value = _hive.getSetting(AppConstants.keyStabilityKey) ?? '';
     nvidiaKey.value = _hive.getSetting(AppConstants.keyNvidiaKey) ?? '';
     openRouterKey.value = _hive.getSetting(AppConstants.keyOpenRouterKey) ?? '';
     deepSeekKey.value = _hive.getSetting(AppConstants.keyDeepSeekKey) ?? '';
@@ -173,9 +157,6 @@ class SettingsController extends GetxController {
     kimiModel.value = _hive.getSetting(AppConstants.keyKimiModel,
             defaultValue: 'kimi-k2.6') ??
         'kimi-k2.6';
-    stabilityModel.value = _hive.getSetting(AppConstants.keyStabilityModel,
-            defaultValue: 'sd3.5-flash') ??
-        'sd3.5-flash';
     nvidiaModel.value = _hive.getSetting(AppConstants.keyNvidiaModel,
             defaultValue: 'meta/llama-3.1-8b-instruct') ??
         'meta/llama-3.1-8b-instruct';
@@ -201,36 +182,11 @@ class SettingsController extends GetxController {
     contextSize.value = _hive.getSetting(AppConstants.keyContextSize,
             defaultValue: AppConstants.defaultContextSize) ??
         AppConstants.defaultContextSize;
-    liteRtPerformanceMode.value = _hive.getSetting(
-          AppConstants.keyLiteRtPerformanceMode,
-          defaultValue: AppConstants.defaultLiteRtPerformanceMode,
+    performanceMode.value = _hive.getSetting(
+          AppConstants.keyPerformanceMode,
+          defaultValue: AppConstants.defaultPerformanceMode,
         ) ??
-        AppConstants.defaultLiteRtPerformanceMode;
-    imageSteps.value = _hive.getSetting(AppConstants.keyImageSteps,
-            defaultValue: AppConstants.defaultImageSteps) ??
-        AppConstants.defaultImageSteps;
-    imageGenForceCpu.value = _hive.getSetting(AppConstants.keyImageGenForceCpu,
-            defaultValue: AppConstants.defaultImageGenForceCpu) ??
-        AppConstants.defaultImageGenForceCpu;
-    imageGenGpuGuardMb.value = _hive.getSetting(
-            AppConstants.keyImageGenGpuGuardMb,
-            defaultValue: AppConstants.defaultImageGenGpuGuardMb) ??
-        AppConstants.defaultImageGenGpuGuardMb;
-    imageGenSize.value = _hive.getSetting(AppConstants.keyImageGenSize,
-            defaultValue: AppConstants.defaultImageGenSize) ??
-        AppConstants.defaultImageGenSize;
-    final savedImageBackend = _hive.getSetting<int>(
-        AppConstants.keyImageGenBackend,
-        defaultValue: Backend.cpu.index);
-    if (savedImageBackend != null &&
-        savedImageBackend >= 0 &&
-        savedImageBackend < Backend.values.length &&
-        !imageGenForceCpu.value) {
-      imageGenBackend.value = Backend.values[savedImageBackend];
-    } else {
-      imageGenBackend.value = Backend.cpu;
-    }
-    _detectImageGpu();
+        AppConstants.defaultPerformanceMode;
     fontScale.value = _hive.getSetting(AppConstants.keyFontScale,
             defaultValue: AppConstants.defaultFontScale) ??
         AppConstants.defaultFontScale;
@@ -245,7 +201,6 @@ class SettingsController extends GetxController {
     anthropicKeyController.text = anthropicKey.value;
     googleKeyController.text = googleKey.value;
     kimiKeyController.text = kimiKey.value;
-    stabilityKeyController.text = stabilityKey.value;
     nvidiaKeyController.text = nvidiaKey.value;
     openRouterKeyController.text = openRouterKey.value;
     deepSeekKeyController.text = deepSeekKey.value;
@@ -264,7 +219,6 @@ class SettingsController extends GetxController {
     anthropicModelController.text = anthropicModel.value;
     googleModelController.text = googleModel.value;
     kimiModelController.text = kimiModel.value;
-    stabilityModelController.text = stabilityModel.value;
     nvidiaModelController.text = nvidiaModel.value;
     openRouterModelController.text = openRouterModel.value;
     deepSeekModelController.text = deepSeekModel.value;
@@ -279,8 +233,6 @@ class SettingsController extends GetxController {
         return googleKeyController;
       case 'kimi':
         return kimiKeyController;
-      case 'stability':
-        return stabilityKeyController;
       case 'nvidia':
         return nvidiaKeyController;
       case 'openrouter':
@@ -302,8 +254,6 @@ class SettingsController extends GetxController {
         return googleModelController;
       case 'kimi':
         return kimiModelController;
-      case 'stability':
-        return stabilityModelController;
       case 'nvidia':
         return nvidiaModelController;
       case 'openrouter':
@@ -325,8 +275,6 @@ class SettingsController extends GetxController {
         return googleModel.value;
       case 'kimi':
         return kimiModel.value;
-      case 'stability':
-        return stabilityModel.value;
       case 'nvidia':
         return nvidiaModel.value;
       case 'openrouter':
@@ -372,11 +320,6 @@ class SettingsController extends GetxController {
         kimiKey.value = trimmed;
         kimiKeyController.text = trimmed;
         await _hive.setSetting(AppConstants.keyKimiKey, trimmed);
-        break;
-      case 'stability':
-        stabilityKey.value = trimmed;
-        stabilityKeyController.text = trimmed;
-        await _hive.setSetting(AppConstants.keyStabilityKey, trimmed);
         break;
       case 'nvidia':
         nvidiaKey.value = trimmed;
@@ -434,11 +377,6 @@ class SettingsController extends GetxController {
         kimiModel.value = model;
         kimiModelController.text = model;
         await _hive.setSetting(AppConstants.keyKimiModel, model);
-        break;
-      case 'stability':
-        stabilityModel.value = model;
-        stabilityModelController.text = model;
-        await _hive.setSetting(AppConstants.keyStabilityModel, model);
         break;
       case 'nvidia':
         nvidiaModel.value = model;
@@ -702,86 +640,14 @@ class SettingsController extends GetxController {
     await _hive.setSetting(AppConstants.keyContextSize, value);
   }
 
-  Future<void> setLiteRtPerformanceMode(String mode) async {
+  Future<void> setPerformanceMode(String mode) async {
     final normalized = switch (mode) {
       'gpu_fast' => 'gpu_fast',
       'cpu_safe' => 'cpu_safe',
-      _ => AppConstants.defaultLiteRtPerformanceMode,
+      _ => AppConstants.defaultPerformanceMode,
     };
-    liteRtPerformanceMode.value = normalized;
-    await _hive.setSetting(AppConstants.keyLiteRtPerformanceMode, normalized);
-  }
-
-  Future<void> setImageSteps(int value) async {
-    imageSteps.value = value;
-    await _hive.setSetting(AppConstants.keyImageSteps, value);
-  }
-
-  Future<void> setImageGenForceCpu(bool value) async {
-    imageGenForceCpu.value = value;
-    await _hive.setSetting(AppConstants.keyImageGenForceCpu, value);
-  }
-
-  Future<void> setImageGenGpuGuardMb(int value) async {
-    imageGenGpuGuardMb.value = value;
-    await _hive.setSetting(AppConstants.keyImageGenGpuGuardMb, value);
-  }
-
-  Future<void> setImageGenSize(int value) async {
-    final allowed = value == 0 ||
-        value == 256 ||
-        value == 320 ||
-        value == 384 ||
-        value == 512;
-    final normalized = allowed ? value : AppConstants.defaultImageGenSize;
-    imageGenSize.value = normalized;
-    await _hive.setSetting(AppConstants.keyImageGenSize, normalized);
-  }
-
-  Future<void> _detectImageGpu() async {
-    try {
-      imageGpuVendor.value = await SdFlutterAndroid.detectGpuVendor();
-    } catch (_) {
-      imageGpuVendor.value = 'unknown';
-    }
-  }
-
-  Backend recommendedImageGpuBackend() {
-    final vendor = imageGpuVendor.value;
-    final preferred = switch (vendor) {
-      'adreno' => Backend.opencl,
-      'mali' || 'xclipse' || 'powervr' || 'imagination' => Backend.vulkan,
-      _ => Backend.vulkan,
-    };
-    if (preferred.isAvailable) return preferred;
-    if (Backend.opencl.isAvailable) return Backend.opencl;
-    if (Backend.vulkan.isAvailable) return Backend.vulkan;
-    return Backend.cpu;
-  }
-
-  String imageGpuLabel() {
-    final vendor = imageGpuVendor.value;
-    final backend = recommendedImageGpuBackend();
-    final vendorLabel = vendor == 'detecting'
-        ? 'Detecting'
-        : vendor == 'unknown'
-            ? 'Unknown GPU'
-            : vendor.toUpperCase();
-    return backend == Backend.cpu
-        ? '$vendorLabel - GPU unavailable'
-        : '$vendorLabel - ${backend.displayName}';
-  }
-
-  Future<void> setImageBackendMode(bool useGpu) async {
-    final backend = useGpu ? recommendedImageGpuBackend() : Backend.cpu;
-    imageGenBackend.value = backend;
-    imageGenForceCpu.value = !useGpu || backend == Backend.cpu;
-    await _hive.setSetting(AppConstants.keyImageGenBackend, backend.index);
-    await _hive.setSetting(
-        AppConstants.keyImageGenForceCpu, imageGenForceCpu.value);
-    if (Get.isRegistered<LocalImageService>()) {
-      Get.find<LocalImageService>().setBackend(backend);
-    }
+    performanceMode.value = normalized;
+    await _hive.setSetting(AppConstants.keyPerformanceMode, normalized);
   }
 
   Future<void> setHapticsEnabled(bool value) async {

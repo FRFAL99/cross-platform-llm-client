@@ -7,7 +7,6 @@ import 'package:get/get.dart';
 import '../services/download_service.dart';
 import '../services/gguf_metadata.dart';
 import '../services/inference_service.dart';
-import '../services/local_image_service.dart';
 import '../services/hive_service.dart';
 import '../services/app_log_service.dart';
 import '../services/device_info_service.dart';
@@ -30,7 +29,6 @@ class FolderModelFile {
 
 class ModelController extends GetxController {
   final DownloadService _download = Get.find<DownloadService>();
-  final LocalImageService _localImage = Get.find<LocalImageService>();
   final InferenceService _inference = Get.find<InferenceService>();
   final HiveService _hive = Get.find<HiveService>();
   final SettingsController _settings = Get.find<SettingsController>();
@@ -65,15 +63,10 @@ class ModelController extends GetxController {
     sortSmallestFirst.value = !sortSmallestFirst.value;
   }
 
-  /// Apple Neural Engine (Core ML) models are only usable on Apple devices.
-  static bool get supportsAppleNpu => Platform.isIOS || Platform.isMacOS;
-
   static const localFilters = [
     'general',
-    'image',
     'uncensored',
     'vision',
-    'npu'
   ];
 
   List<AiModel> get displayedModels {
@@ -106,10 +99,6 @@ class ModelController extends GetxController {
           return isUncensoredModel(model);
         case 'vision':
           return isVisionModel(model);
-        case 'image':
-          return isImageModel(model);
-        case 'npu':
-          return isNpuModel(model);
         case 'general':
         default:
           return isGeneralModel(model);
@@ -141,8 +130,6 @@ class ModelController extends GetxController {
     _loadCustomModels();
     availableModels.value = AppConstants.availableModels
         .map((m) => AiModel.fromMap(m))
-        // Core ML (Apple NPU) models only run on iOS/macOS.
-        .where((m) => supportsAppleNpu || !isNpuModel(m))
         .toList()
       ..addAll(customModels);
     refreshDownloaded();
@@ -171,7 +158,7 @@ class ModelController extends GetxController {
       ..clear()
       ..addAll(allFiles.where(_isVisionProjectorFile));
     final files =
-        allFiles.where((file) => !_isAuxiliaryImageFile(file)).toList();
+        allFiles.where((file) => !_isVisionProjectorFile(file)).toList();
     downloadedFiles.value = files;
     for (final file in files) {
       fileSizes[file] = await _download.getModelSize(file);
@@ -200,21 +187,15 @@ class ModelController extends GetxController {
           ));
           continue;
         }
-        final lower = file.toLowerCase();
-        final runtime = AiModel.runtimeFromFilename(file);
-        final isLiteRt = runtime == AiModel.runtimeLiteRt;
-        final isVision = isLiteRt && AiModel.hasVisionMarker(lower);
-
         availableModels.add(AiModel(
           name: file,
           filename: file,
           url: '',
           size: _formatModelSize(file),
           description: 'Imported from local storage',
-          template: isLiteRt ? 'litert' : 'chatml',
-          runtime: runtime,
+          template: 'chatml',
+          runtime: AiModel.runtimeLlama,
           isImported: true,
-          isVision: isVision,
         ));
       }
     }
@@ -278,20 +259,6 @@ class ModelController extends GetxController {
     await _downloadVisionFile(model);
   }
 
-  bool _isAuxiliaryImageFile(String filename) {
-    final lower = filename.toLowerCase();
-    // GGUF vision projectors ride along with their model; never list or
-    // load them as models of their own.
-    if (lower.endsWith('.gguf') && lower.contains('mmproj')) return true;
-    return lower == 'taesd.safetensors' ||
-        lower.startsWith('taesd-') ||
-        lower.startsWith('taesd_') ||
-        lower == 'diffusion_pytorch_model.safetensors' ||
-        lower.endsWith('.vae.safetensors') ||
-        lower.startsWith('vae-') ||
-        lower.startsWith('vae_');
-  }
-
   bool _isIncompleteCatalogFile(AiModel model, int fileBytes) {
     if (model.url.trim().isEmpty || model.isImported || fileBytes <= 0) {
       return false;
@@ -318,41 +285,19 @@ class ModelController extends GetxController {
       _download.activeDownloads.containsKey(filename);
 
   void setLocalFilter(String filter) {
-    if (filter == 'npu' && !supportsAppleNpu) return;
     if (localFilters.contains(filter)) {
       localFilter.value = filter;
     }
   }
 
-  /// Can read images: LiteRT vision models, or GGUF models that come with a
-  /// vision projector (mmproj) file.
-  bool isVisionModel(AiModel model) {
-    if (model.hasVisionProjector) return true;
-    if (!isLiteRtModel(model)) return false;
-    final lower =
-        '${model.name} ${model.filename} ${model.description}'.toLowerCase();
-    return model.isVision || AiModel.hasVisionMarker(lower);
-  }
+  /// Can read images: GGUF models that come with a vision projector
+  /// (mmproj) file.
+  bool isVisionModel(AiModel model) => model.hasVisionProjector;
 
   bool isUncensoredModel(AiModel model) {
     return AppConstants.isUncensoredModelName(
       '${model.name} ${model.filename} ${model.description}',
     );
-  }
-
-  bool isImageModel(AiModel model) {
-    final lower = model.filename.toLowerCase();
-    return model.runtime == AiModel.runtimeSd ||
-        lower.endsWith('.safetensors') ||
-        lower.endsWith('.coreml') ||
-        lower.endsWith('.mlpackage') ||
-        lower.endsWith('.mlmodelc') ||
-        model.template == 'sd';
-  }
-
-  bool isLiteRtModel(AiModel model) {
-    return model.runtime == AiModel.runtimeLiteRt ||
-        model.filename.toLowerCase().endsWith('.litertlm');
   }
 
   bool isLlamaModel(AiModel model) {
@@ -361,17 +306,7 @@ class ModelController extends GetxController {
   }
 
   bool isGeneralModel(AiModel model) =>
-      !isVisionModel(model) &&
-      !isUncensoredModel(model) &&
-      !isImageModel(model) &&
-      !isNpuModel(model);
-
-  bool isNpuModel(AiModel model) {
-    final lower = model.filename.toLowerCase();
-    return lower.endsWith('.mlmodelc') ||
-        lower.endsWith('.mlpackage') ||
-        lower.contains('coreml');
-  }
+      !isVisionModel(model) && !isUncensoredModel(model);
 
   String modelSizeLabel(AiModel model) {
     final bytes = fileSizes[model.filename] ?? 0;
@@ -604,18 +539,14 @@ class ModelController extends GetxController {
     final path = await _download.modelPath(filename);
     final model =
         availableModels.firstWhereOrNull((m) => m.filename == filename);
-    if (_isAuxiliaryImageFile(filename)) {
+    if (_isVisionProjectorFile(filename)) {
       showToast(
         'Helper File',
-        '$filename is a helper file used by another model and cannot be loaded on its own.',
+        '$filename is a vision file used by another model and cannot be loaded on its own.',
         tone: ToastTone.info,
       );
       return;
     }
-    final isLiteRt = filename.toLowerCase().endsWith('.litertlm') ||
-        model?.runtime == AiModel.runtimeLiteRt;
-    // Switching runtimes (LiteRT <-> GGUF) only needs the current engine
-    // unloaded first; the load sheet below offers "Unload & continue".
     final fileBytes = await _modelFileBytes(filename, path, model);
     if (model != null && _isIncompleteCatalogFile(model, fileBytes)) {
       final actual = DownloadService.formatBytes(fileBytes);
@@ -631,141 +562,49 @@ class ModelController extends GetxController {
       );
       return;
     }
-    if (filename.toLowerCase().endsWith('.safetensors') &&
-        !await _hasValidSafetensorsHeader(path)) {
-      Get.find<AppLogService>().error(
-        'Corrupt safetensors file blocked',
-        details: '$filename failed safetensors header validation',
-      );
-      showToast(
-        'Corrupt Model File',
-        '$filename did not download correctly. Delete it and download again.',
-        tone: ToastTone.error,
-        duration: const Duration(seconds: 6),
-      );
-      return;
-    }
-    if (isLiteRt && !await _hasLikelyValidLiteRtFile(path, fileBytes)) {
-      Get.find<AppLogService>().error(
-        'Corrupt LiteRT model file blocked',
-        details: '$filename failed LiteRT file validation; size=$fileBytes',
-      );
-      showToast(
-        'Corrupt Model File',
-        '$filename is not a valid LiteRT-LM file. Delete it and download again.',
-        tone: ToastTone.error,
-        duration: const Duration(seconds: 6),
-      );
-      return;
-    }
-    // The phone cluster splits GGUF models only (llama.cpp); a LiteRT model
-    // always runs on this phone, so say so instead of silently ignoring the
-    // workers.
-    if (isLiteRt &&
-        Get.isRegistered<ClusterService>() &&
-        !await Get.find<ClusterService>().confirmLiteRtRunsHere(filename)) {
-      return;
-    }
     final loadAction = await _confirmModelLoadSafety(
       filename: filename,
       path: path,
       fileBytes: fileBytes,
-      isLiteRt: isLiteRt,
     );
     if (loadAction == _ModelLoadAction.cancel) return;
     if (loadAction == _ModelLoadAction.unloadAndContinue) {
       await unloadModel();
     }
-    if (isLiteRt && !await _confirmLiteRtGpuWarning()) return;
 
-    if (isImageModel(model ??
-        AiModel(
-          name: filename,
-          filename: filename,
-          url: '',
-          size: '',
-          description: '',
-          template: '',
-        ))) {
-      // Auto-download TAESD for fast VAE decode if not present
-      String? taesdPath;
-      try {
-        const taesdFilename = 'taesd.safetensors';
-        const taesdUrl =
-            'https://huggingface.co/madebyollin/taesd/resolve/main/diffusion_pytorch_model.safetensors';
-        final hasTaesd = await _download.isModelDownloaded(taesdFilename);
-        if (!hasTaesd &&
-            !_download.activeDownloads.containsKey(taesdFilename)) {
-          print('[ModelController] TAESD not found, downloading...');
-          // On Android this only starts a background download and returns
-          // immediately, so the file may not exist yet.
-          await _download.downloadModel(url: taesdUrl, filename: taesdFilename);
-        }
-        // Only hand sd.cpp a TAESD path that is fully on disk; a missing
-        // file makes the whole model load fail on every backend.
-        if (await _download.isModelDownloaded(taesdFilename)) {
-          taesdPath = await _download.modelPath(taesdFilename);
-          print('[ModelController] Using TAESD for fast decode');
-        } else {
-          print('[ModelController] TAESD not ready yet, using standard VAE');
-        }
-      } catch (e) {
-        print(
-            '[ModelController] TAESD download failed (will use standard VAE): $e');
-      }
-
-      // Progress shows inline on the model's card, like text models.
-      final result = await _localImage.loadModel(path,
-          modelName: filename, taesdPath: taesdPath);
-
-      final isError = !_localImage.isModelLoaded.value;
-      showToast(
-        isError ? 'Model Not Loaded' : 'Image Model',
-        result,
-        tone: isError ? ToastTone.warning : ToastTone.success,
-        duration:
-            isError ? const Duration(seconds: 6) : const Duration(seconds: 2),
-      );
-    } else {
-      // GGUF vision: pass the projector if it's on disk; otherwise fetch it
-      // and load text-only for now.
-      String? mmprojPath;
-      var visionNote = '';
-      if (model != null && model.hasVisionProjector && !isLiteRt) {
-        if (await _download.isModelDownloaded(model.mmprojFilename)) {
-          mmprojPath = await _download.modelPath(model.mmprojFilename);
-        } else {
-          visionNote = ' Vision file is still downloading, so images will '
-              'work after you reload the model.';
-          if (model.mmprojUrl.isNotEmpty &&
-              !_download.activeDownloads.containsKey(model.mmprojFilename)) {
-            unawaited(_downloadVisionFile(model));
-          }
-        }
-      }
-      final result = await _inference.loadModel(
-        path,
-        modelName: filename,
-        modelRuntime: model?.runtime,
-        enableLiteRtVision: model != null && isLiteRt && isVisionModel(model),
-        mmprojPath: mmprojPath,
-      );
-      if (_inference.isModelLoaded.value) {
-        final fallbackToText = result.toLowerCase().contains('text-only');
-        _inference.isVisionLoaded.value = isLiteRt
-            ? (!fallbackToText && model != null && isVisionModel(model))
-            : _inference.ggufVisionLoaded;
-        if (visionNote.isNotEmpty) {
-          showToast('Model Loaded', '$result$visionNote',
-              tone: ToastTone.info, duration: const Duration(seconds: 5));
-          await _settings.setInferenceMode('local');
-          return;
-        }
-        await _settings.setInferenceMode('local');
-        showToast('Model Loaded', result, tone: ToastTone.success);
+    // GGUF vision: pass the projector if it's on disk; otherwise fetch it
+    // and load text-only for now.
+    String? mmprojPath;
+    var visionNote = '';
+    if (model != null && model.hasVisionProjector) {
+      if (await _download.isModelDownloaded(model.mmprojFilename)) {
+        mmprojPath = await _download.modelPath(model.mmprojFilename);
       } else {
-        _showLoadFailedSheet(filename, result);
+        visionNote = ' Vision file is still downloading, so images will '
+            'work after you reload the model.';
+        if (model.mmprojUrl.isNotEmpty &&
+            !_download.activeDownloads.containsKey(model.mmprojFilename)) {
+          unawaited(_downloadVisionFile(model));
+        }
       }
+    }
+    final result = await _inference.loadModel(
+      path,
+      modelName: filename,
+      mmprojPath: mmprojPath,
+    );
+    if (_inference.isModelLoaded.value) {
+      _inference.isVisionLoaded.value = _inference.ggufVisionLoaded;
+      if (visionNote.isNotEmpty) {
+        showToast('Model Loaded', '$result$visionNote',
+            tone: ToastTone.info, duration: const Duration(seconds: 5));
+        await _settings.setInferenceMode('local');
+        return;
+      }
+      await _settings.setInferenceMode('local');
+      showToast('Model Loaded', result, tone: ToastTone.success);
+    } else {
+      _showLoadFailedSheet(filename, result);
     }
   }
 
@@ -787,80 +626,15 @@ class ModelController extends GetxController {
     return model == null ? 0 : _knownModelBytes(model);
   }
 
-  Future<bool> _hasValidSafetensorsHeader(String path) async {
-    RandomAccessFile? raf;
-    try {
-      final file = File(path);
-      final length = await file.length();
-      if (length < 16) return false;
-      raf = await file.open();
-      final bytes = await raf.read(16);
-      if (bytes.length < 16) return false;
-
-      var headerLength = 0;
-      for (var i = 0; i < 8; i++) {
-        headerLength += bytes[i] << (8 * i);
-      }
-
-      if (headerLength <= 2 || headerLength > length - 8) return false;
-      if (headerLength > 64 * 1024 * 1024) return false;
-      return bytes[8] == 0x7B;
-    } catch (_) {
-      return false;
-    } finally {
-      await raf?.close();
-    }
-  }
-
-  Future<bool> _hasLikelyValidLiteRtFile(String path, int fileBytes) async {
-    RandomAccessFile? raf;
-    try {
-      final file = File(path);
-      if (!await file.exists()) return false;
-      final length = await file.length();
-      if (length < 10 * 1024 * 1024) return false;
-
-      raf = await file.open();
-      final bytes = await raf.read(16);
-      if (bytes.length < 8) return false;
-
-      // Verify LiteRT-LM magic identifier 'LITERTLM' at bytes 0-7
-      final hasLmLiteRt = bytes[0] == 0x4C && // 'L'
-          bytes[1] == 0x49 && // 'I'
-          bytes[2] == 0x54 && // 'T'
-          bytes[3] == 0x45 && // 'E'
-          bytes[4] == 0x52 && // 'R'
-          bytes[5] == 0x54 && // 'T'
-          bytes[6] == 0x4C && // 'L'
-          bytes[7] == 0x4D; // 'M'
-
-      if (hasLmLiteRt) {
-        return true;
-      }
-
-      // Note: We intentionally DO NOT allow standard TFLite models starting with 'TFL3' at offset 4
-      // if they lack the 'LITERTLM' container header, because the native LiteRT-LM engine
-      // strictly expects the .litertlm conversational bundle structure and will crash with a
-      // SIGABRT native assert check failure if it is not present.
-      return false;
-    } catch (_) {
-      return false;
-    } finally {
-      await raf?.close();
-    }
-  }
-
   Future<_ModelLoadAction> _confirmModelLoadSafety({
     required String filename,
     required String path,
     required int fileBytes,
-    required bool isLiteRt,
   }) async {
     // Phone cluster: the model is split across phones, so this phone's free
     // memory alone says little. ClusterService checks the whole cluster's
     // memory (and offers this-phone-only when it fits) right before loading.
-    if (!isLiteRt &&
-        filename.toLowerCase().endsWith('.gguf') &&
+    if (filename.toLowerCase().endsWith('.gguf') &&
         Get.isRegistered<ClusterService>() &&
         Get.find<ClusterService>().role == ClusterRole.master &&
         Get.find<ClusterService>().workers.isNotEmpty) {
@@ -869,13 +643,11 @@ class ModelController extends GetxController {
 
     final availableRamGb = await _refreshAvailableRamGb();
 
-    // Whatever is loaded now (text or image) gets unloaded first, so count
-    // its memory as free when judging whether the new model fits.
+    // Whatever is loaded now gets unloaded first, so count its memory as
+    // free when judging whether the new model fits.
     final loadedName = _inference.isModelLoaded.value
         ? _inference.loadedModelName.value
-        : _localImage.isModelLoaded.value
-            ? _localImage.loadedModelName.value
-            : '';
+        : '';
     final hasLoadedModel = loadedName.isNotEmpty;
     final isSameModelLoaded = hasLoadedModel && loadedName == filename;
     final loadedBytes = hasLoadedModel ? (fileSizes[loadedName] ?? 0) : 0;
@@ -924,25 +696,18 @@ class ModelController extends GetxController {
     } else if (isCriticallyLow) {
       warning =
           'Available RAM is lower than recommended. This can crash the app if Android cannot reserve enough memory.';
-    } else if (isLargeForRam || isLowRam || isLiteRt) {
+    } else if (isLargeForRam || isLowRam) {
       warning =
           'This can crash the app if Android cannot reserve enough memory for the model.';
     } else {
       warning = 'Loading local models can use more memory than the file size.';
     }
-    final runtimeLabel = isLiteRt
-        ? 'LiteRT-LM'
-        : lower.endsWith('.gguf')
-            ? 'GGUF'
-            : lower.endsWith('.safetensors')
-                ? 'Image model'
-                : 'Local model';
+    final runtimeLabel = lower.endsWith('.gguf') ? 'GGUF' : 'Local model';
 
     final warningSerious = (gguf != null && !fits) ||
         isCriticallyLow ||
         isLargeForRam ||
-        isLowRam ||
-        isLiteRt;
+        isLowRam;
 
     final sheetContext = Get.context;
     if (sheetContext == null || !sheetContext.mounted) {
@@ -1069,38 +834,6 @@ class ModelController extends GetxController {
     return result ?? _ModelLoadAction.cancel;
   }
 
-  Future<bool> _confirmLiteRtGpuWarning() async {
-    final mode = _settings.liteRtPerformanceMode.value;
-    if (mode == 'cpu_safe') return true;
-
-    final accepted = _hive.getSetting<bool>(
-          AppConstants.keyLiteRtGpuWarningAccepted,
-          defaultValue: false,
-        ) ??
-        false;
-    if (accepted) return true;
-
-    final modeLabel = mode == 'gpu_fast' ? 'GPU Fast' : 'Auto Fast';
-    final context = Get.context;
-    final confirmed = context == null
-        ? false
-        : await confirmSheet(
-            context,
-            title: '$modeLabel LiteRT speed',
-            message:
-                'GPU can make LiteRT models much faster, closer to Edge Gallery speed. '
-                'On some phones GPU/OpenCL can crash the app while loading. '
-                'If that happens, Auto Fast will use CPU on the next load.',
-            confirmLabel: 'Continue',
-          );
-
-    if (confirmed == true) {
-      await _hive.setSetting(AppConstants.keyLiteRtGpuWarningAccepted, true);
-      return true;
-    }
-    return false;
-  }
-
   bool _isLowMemoryBytes(int bytes) => bytes < 768 * 1024 * 1024;
 
   Future<double> _refreshAvailableRamGb() async {
@@ -1115,7 +848,6 @@ class ModelController extends GetxController {
 
   Future<void> unloadModel() async {
     await _inference.unloadModel();
-    await _localImage.unloadModel();
   }
 
   Future<void> importModelFromStorage() async {
@@ -1143,11 +875,8 @@ class ModelController extends GetxController {
         final filename = picked.name;
         final lower = filename.toLowerCase();
 
-        if (!lower.endsWith('.gguf') &&
-            !lower.endsWith('.litertlm') &&
-            !lower.endsWith('.safetensors')) {
-          showToast('Unsupported Model',
-              'Only .gguf, .litertlm, and .safetensors files can be imported.',
+        if (!lower.endsWith('.gguf')) {
+          showToast('Unsupported Model', 'Only .gguf files can be imported.',
               tone: ToastTone.warning);
           return;
         }
@@ -1493,8 +1222,6 @@ class ModelController extends GetxController {
           tone: ToastTone.error, duration: const Duration(seconds: 6));
       return;
     }
-    final showLiteRtTip = result.toLowerCase().contains('litert') ||
-        filename.toLowerCase().endsWith('.litertlm');
     final isCluster = _isClusterError(result);
     bool showDetails = false;
     showAppSheet<void>(
@@ -1520,9 +1247,6 @@ class ModelController extends GetxController {
                 _buildTipRow(ctx, Icons.memory_rounded,
                     'Ensure your device has at least 2-3 GB of free RAM.'),
               ],
-              if (showLiteRtTip)
-                _buildTipRow(ctx, Icons.tune_rounded,
-                    'Double check if this LiteRT-LM file matches your architecture.'),
               const SizedBox(height: 4),
               Align(
                 alignment: Alignment.centerLeft,

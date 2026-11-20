@@ -12,8 +12,6 @@ import '../controllers/model_controller.dart';
 import '../controllers/home_controller.dart';
 import '../services/cluster_service.dart';
 import '../services/inference_service.dart';
-import '../services/local_image_service.dart';
-import '../ffi/sd_ffi_bindings.dart';
 import '../utils/thought_parser.dart';
 import '../widgets/attachment_preview.dart';
 import '../widgets/chat_bubble.dart';
@@ -226,11 +224,10 @@ class ChatView extends GetView<ChatController> {
       BuildContext context) {
     final settings = Get.find<SettingsController>();
     final inf = Get.find<InferenceService>();
-    final img = Get.find<LocalImageService>();
     const green = Color(0xFF34C759);
     const orange = Color(0xFFFF9500);
     String pretty(String n) => n.replaceAll(
-        RegExp(r'\.(gguf|litertlm|task|bin)$', caseSensitive: false), '');
+        RegExp(r'\.(gguf|bin)$', caseSensitive: false), '');
 
     if (settings.inferenceMode.value != 'local') {
       final m = settings.selectedCloudModelName;
@@ -258,18 +255,8 @@ class ChatView extends GetView<ChatController> {
               ? Get.find<ClusterService>().splitSummary ??
                   (inf.isGpuAccelerated.value ? 'GPU' : 'CPU')
               : (inf.isGpuAccelerated.value ? 'GPU' : 'CPU'),
-          inf.loadedModelRuntime.value == 'litert' ? 'LiteRT' : 'GGUF',
+          'GGUF',
         ].join(' · '),
-        dot: green,
-        canUnload: true,
-      );
-    }
-    if (img.isModelLoaded.value) {
-      final b = img.currentBackend.value;
-      return (
-        name: pretty(img.loadedModelName.value),
-        meta:
-            'Ready · Image generation · ${b == Backend.cpu ? 'CPU' : b.displayName.split(' ').first}',
         dot: green,
         canUnload: true,
       );
@@ -470,7 +457,6 @@ class ChatView extends GetView<ChatController> {
   // ── Streaming Bubble ──
   Widget _streamBubble(BuildContext context, String text, bool isDark) {
     final attType = controller.streamingAttachmentType.value;
-    final isImageGen = controller.imageGenTotal.value > 0;
     final clean = _cleanStream(text).trimLeft();
     final parts = splitThoughtTags(clean);
     final answer = parts.answer.trimLeft();
@@ -480,18 +466,7 @@ class ChatView extends GetView<ChatController> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 10, 20, 4),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        if (isImageGen)
-          Container(
-            constraints: BoxConstraints(
-                maxWidth: MediaQuery.of(context).size.width * 0.82),
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: _aiBubble(context),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: _ImageGenIndicator(controller: controller, isDark: isDark),
-          )
-        else if (!hasText)
+        if (!hasText)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 6),
             child: _typingHint(context, isDark, attachmentType: attType),
@@ -512,7 +487,7 @@ class ChatView extends GetView<ChatController> {
               _BlinkingCursor(color: Theme.of(context).hintColor),
             ]),
         ],
-        if (hasText && !isImageGen)
+        if (hasText)
           Obx(() {
             final inf = Get.find<InferenceService>();
             if (inf.tokensPerSecond.value <= 0) {
@@ -610,205 +585,6 @@ class ChatView extends GetView<ChatController> {
                 ),
               );
             }),
-            Obx(() {
-              final settings = Get.find<SettingsController>();
-              final localImage = Get.find<LocalImageService>();
-              if (settings.inferenceMode.value != 'local' ||
-                  !localImage.isModelLoaded.value) {
-                return const SizedBox.shrink();
-              }
-              final steps = settings.imageSteps.value;
-              final size = settings.imageGenSize.value;
-              final sizeLabel = size == 0 ? 'Auto' : '${size}px';
-              final backend = localImage.currentBackend.value;
-              final backendLabel = backend == Backend.cpu
-                  ? 'CPU'
-                  : (backend == Backend.metal
-                      ? 'APPLE NPU'
-                      : backend.displayName.split(' ').first.toUpperCase());
-              final accent = backend == Backend.cpu
-                  ? const Color(0xFFFF9500)
-                  : const Color(0xFF34C759);
-              return Padding(
-                padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: accent.withValues(alpha: 0.10),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: accent.withValues(alpha: 0.24),
-                            width: 0.5,
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.auto_awesome_rounded,
-                                size: 13, color: accent),
-                            const SizedBox(width: 6),
-                            Flexible(
-                              child: Text(
-                                'Image gen · $steps ${steps == 1 ? "step" : "steps"} · $sizeLabel · $backendLabel',
-                                overflow: TextOverflow.ellipsis,
-                                style: GoogleFonts.inter(
-                                  fontSize: 11,
-                                  color: accent,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      height: 30,
-                      decoration: BoxDecoration(
-                        color: isDark
-                            ? Colors.white.withValues(alpha: 0.06)
-                            : Colors.black.withValues(alpha: 0.04),
-                        borderRadius: BorderRadius.circular(15),
-                        border: Border.all(color: _sep(context), width: 0.5),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          _StepButton(
-                            icon: Icons.remove_rounded,
-                            enabled: steps > 1,
-                            onTap: () => settings.setImageSteps(steps - 1),
-                          ),
-                          Text(
-                            steps.toString(),
-                            style: GoogleFonts.inter(
-                              fontSize: 12,
-                              color: isDark ? Colors.white : Colors.black,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          _StepButton(
-                            icon: Icons.add_rounded,
-                            enabled: steps < 20,
-                            onTap: () => settings.setImageSteps(steps + 1),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }),
-            Obx(() {
-              if (controller.lastBatchImagesBase64.isEmpty) {
-                return const SizedBox.shrink();
-              }
-              return Container(
-                margin: const EdgeInsets.fromLTRB(4, 0, 4, 8),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF34C759).withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                      color: const Color(0xFF34C759).withValues(alpha: 0.3)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.check_circle_rounded,
-                        size: 18, color: Color(0xFF34C759)),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Batch complete! (${controller.lastBatchImagesBase64.length} images)',
-                        style: GoogleFonts.inter(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 13,
-                            color: isDark ? Colors.white : Colors.black),
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: () => controller.lastBatchImagesBase64.clear(),
-                      style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        minimumSize: const Size(0, 32),
-                        foregroundColor: Theme.of(context).hintColor,
-                      ),
-                      child: const Text('Dismiss'),
-                    ),
-                    const SizedBox(width: 8),
-                    FilledButton.icon(
-                      onPressed: () => controller.downloadLastBatch(),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: const Color(0xFF34C759),
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        minimumSize: const Size(0, 32),
-                      ),
-                      icon: const Icon(Icons.download_rounded, size: 16),
-                      label: const Text('Save All'),
-                    ),
-                  ],
-                ),
-              );
-            }),
-            Obx(() {
-              if (controller.batchPrompts.isEmpty) {
-                return const SizedBox.shrink();
-              }
-              return Container(
-                margin: const EdgeInsets.fromLTRB(4, 0, 4, 8),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: _appleBlue(context).withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                      color: _appleBlue(context).withValues(alpha: 0.3)),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.layers_rounded,
-                        size: 18, color: _appleBlue(context)),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        '${controller.batchPrompts.length}/20 batch prompts',
-                        style: GoogleFonts.inter(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 13,
-                            color: isDark ? Colors.white : Colors.black),
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: () => controller.batchPrompts.clear(),
-                      style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        minimumSize: const Size(0, 32),
-                        foregroundColor: Colors.redAccent,
-                      ),
-                      child: const Text('Clear'),
-                    ),
-                    const SizedBox(width: 8),
-                    FilledButton(
-                      onPressed: controller.isLoading.value
-                          ? null
-                          : () => controller.generateBatch(),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: _appleBlue(context),
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        minimumSize: const Size(0, 32),
-                      ),
-                      child: const Text('Start Batch'),
-                    ),
-                  ],
-                ),
-              );
-            }),
             // Composer: one rounded surface holding the field and its actions.
             Container(
                 padding: const EdgeInsets.all(5),
@@ -830,14 +606,11 @@ class ChatView extends GetView<ChatController> {
                     final s = Get.find<SettingsController>();
                     final inf = Get.find<InferenceService>();
                     final isCloud = s.inferenceMode.value == 'cloud';
-                    // LiteRT vision models or GGUF models with a vision
-                    // projector can take photos.
+                    // GGUF models with a vision projector can take photos.
                     final isLocalVision = s.inferenceMode.value == 'local' &&
                         inf.isVisionLoaded.value;
-                    // Audio files only work with cloud and LiteRT models.
-                    final audioOk = isCloud ||
-                        (isLocalVision &&
-                            inf.loadedModelRuntime.value == 'litert');
+                    // Audio files only work with cloud models.
+                    final audioOk = isCloud;
                     // Any local text model can read documents: their text is
                     // extracted and inlined into the prompt.
                     final isLocalText = s.inferenceMode.value == 'local' &&
@@ -866,8 +639,7 @@ class ChatView extends GetView<ChatController> {
                     // and tapping it goes to Models. Cloud mode is unaffected.
                     final noModel = _localModelMissing();
                     final loadingModel =
-                        Get.find<InferenceService>().isLoadingModel.value ||
-                            Get.find<LocalImageService>().isLoadingModel.value;
+                        Get.find<InferenceService>().isLoadingModel.value;
                     return GestureDetector(
                         behavior: HitTestBehavior.opaque,
                         onTap: noModel && !loadingModel
@@ -910,85 +682,6 @@ class ChatView extends GetView<ChatController> {
                         ));
                   })),
                   const SizedBox(width: 6),
-                  // Batch add button
-                  Obx(() {
-                    final settings = Get.find<SettingsController>();
-                    final localImage = Get.find<LocalImageService>();
-                    if (settings.inferenceMode.value == 'local' &&
-                        localImage.isModelLoaded.value &&
-                        localImage.currentBackend.value == Backend.metal) {
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 6),
-                        child: GestureDetector(
-                          onLongPress: () {
-                            // Testing mode: Populate batch with 15 fresh alternative prompts
-                            final testPrompts = [
-                              "Portrait of a goth girl with dark makeup, realistic photography, 8k",
-                              "Realistic photo of an elf girl in a forest, cinematic lighting",
-                              "A fluffy orange cat sleeping on a sunny couch, photorealistic",
-                              "A handsome man in a sharp suit, realistic portrait, studio lighting",
-                              "A futuristic city street at night, realistic photography",
-                              "A beautiful young woman with freckles, natural sunlight",
-                              "A majestic lion resting in the savanna, highly detailed",
-                              "An old man with a weathered face, realistic portrait, high detail",
-                              "A delicious looking cup of coffee on a wooden table, macro photography",
-                              "A medieval knight holding a sword, realistic cinematic lighting",
-                              "A golden retriever playing fetch, sharp focus, photography",
-                              "A realistic cyberpunk character with neon reflections",
-                              "A vintage muscle car driving down a desert highway, photorealistic",
-                              "A serene mountain lake at sunrise, realistic landscape photography",
-                              "A close-up of a beautiful eye with detailed iris, macro shot"
-                            ];
-                            // Shuffle them before adding
-                            testPrompts.shuffle();
-                            controller.batchPrompts.clear();
-                            controller.batchPrompts.addAll(testPrompts);
-                            showToast('Test mode',
-                                'Added 15 test prompts to the batch.',
-                                tone: ToastTone.success);
-                          },
-                          onTap: () async {
-                            final text = controller.textController.text.trim();
-                            if (text.isEmpty) return;
-                            if (controller.batchPrompts.length >= 20) {
-                              showToast('Batch limit',
-                                  'You can add up to 20 prompts per batch.',
-                                  tone: ToastTone.warning);
-                              return;
-                            }
-                            if (!controller.batchModeAccepted.value) {
-                              final accepted = await confirmSheet(
-                                context,
-                                title: 'Batch generation',
-                                message:
-                                    'Generating multiple images back-to-back is demanding. Your device may get warm and use more battery.',
-                                confirmLabel: 'Continue',
-                              );
-                              if (!accepted) return;
-                              controller.acceptBatchMode();
-                            }
-                            controller.batchPrompts.add(text);
-                            controller.textController.clear();
-                            controller.inputText.value = '';
-                          },
-                          child: Container(
-                            // 3px margins → 40px row height, matching the field.
-                            margin: const EdgeInsets.symmetric(vertical: 3),
-                            width: 34,
-                            height: 34,
-                            decoration: BoxDecoration(
-                              color:
-                                  _appleBlue(context).withValues(alpha: 0.15),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(Icons.add_rounded,
-                                size: 22, color: _appleBlue(context)),
-                          ),
-                        ),
-                      );
-                    }
-                    return const SizedBox.shrink();
-                  }),
                   // Unified mic / send / stop button
                   Obx(() {
                     final loading = controller.isLoading.value;
@@ -1063,13 +756,12 @@ class ChatView extends GetView<ChatController> {
     );
   }
 
-  /// Local mode with no text or image model loaded (cloud never counts).
+  /// Local mode with no model loaded (cloud never counts).
   bool _localModelMissing() {
     if (Get.find<SettingsController>().inferenceMode.value != 'local') {
       return false;
     }
-    return !Get.find<InferenceService>().isModelLoaded.value &&
-        !Get.find<LocalImageService>().isModelLoaded.value;
+    return !Get.find<InferenceService>().isModelLoaded.value;
   }
 
   // ── Markdown styles ──
@@ -1339,266 +1031,6 @@ class _PulsingDotState extends State<_PulsingDot>
         decoration: const BoxDecoration(
             color: Color(0xFFFF3B30), shape: BoxShape.circle),
       ),
-    );
-  }
-}
-
-class _StepButton extends StatelessWidget {
-  final IconData icon;
-  final bool enabled;
-  final VoidCallback onTap;
-
-  const _StepButton({
-    required this.icon,
-    required this.enabled,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final color = enabled
-        ? _appleBlue(context)
-        : Theme.of(context).hintColor.withValues(alpha: 0.35);
-    return GestureDetector(
-      onTap: enabled ? onTap : null,
-      behavior: HitTestBehavior.opaque,
-      child: SizedBox(
-        width: 30,
-        height: 30,
-        child: Icon(icon, size: 16, color: color),
-      ),
-    );
-  }
-}
-
-// ── Image Generation Indicator ──
-class _ImageGenIndicator extends StatefulWidget {
-  final ChatController controller;
-  final bool isDark;
-  const _ImageGenIndicator({required this.controller, required this.isDark});
-
-  @override
-  State<_ImageGenIndicator> createState() => _ImageGenIndicatorState();
-}
-
-class _ImageGenIndicatorState extends State<_ImageGenIndicator>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _c;
-  late Timer _timer;
-  int _elapsedSeconds = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    _c = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1800),
-    )..repeat();
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      final start = widget.controller.imageGenStartTime.value;
-      if (start != null) {
-        setState(() {
-          _elapsedSeconds = DateTime.now().difference(start).inSeconds;
-        });
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _timer.cancel();
-    _c.dispose();
-    super.dispose();
-  }
-
-  String _fmtEta(int seconds) {
-    if (seconds <= 0) return '';
-    if (seconds < 60) return '~$seconds s remaining';
-    final m = seconds ~/ 60;
-    final s = seconds % 60;
-    return s > 0 ? '~$m m $s s remaining' : '~$m m remaining';
-  }
-
-  String _fmtElapsed(int seconds) {
-    if (seconds < 60) return '${seconds}s';
-    final m = seconds ~/ 60;
-    final s = seconds % 60;
-    return s > 0 ? '${m}m ${s}s' : '${m}m';
-  }
-
-  Widget _backendChip(BuildContext context) {
-    final localImage = Get.find<LocalImageService>();
-    final backend = localImage.currentBackend.value;
-    final isCpu = backend == Backend.cpu;
-    final color = isCpu
-        ? const Color(0xFFFF9500) // Orange for CPU
-        : const Color(0xFF34C759); // Green for GPU
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withValues(alpha: 0.3), width: 0.5),
-      ),
-      child: Text(
-        isCpu
-            ? 'CPU · Slow'
-            : backend == Backend.metal
-                ? 'APPLE NPU'
-                : backend.displayName.split(' ').first.toUpperCase(),
-        style: GoogleFonts.inter(
-          fontSize: 9,
-          fontWeight: FontWeight.w600,
-          color: color,
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _c,
-      builder: (_, __) {
-        final dots = Row(
-          mainAxisSize: MainAxisSize.min,
-          children: List.generate(3, (i) {
-            final t = ((_c.value - i * 0.18) % 1.0).clamp(0.0, 1.0);
-            final pulse = math.sin(t * math.pi).clamp(0.0, 1.0);
-            return Padding(
-              padding: EdgeInsets.only(right: i < 2 ? 5 : 0),
-              child: Opacity(
-                opacity: 0.25 + 0.75 * pulse,
-                child: Container(
-                  width: 7,
-                  height: 7,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: widget.isDark
-                        ? Colors.white.withValues(alpha: 0.6)
-                        : Colors.black.withValues(alpha: 0.35),
-                  ),
-                ),
-              ),
-            );
-          }),
-        );
-
-        return Obx(() {
-          final step = widget.controller.imageGenStep.value;
-          final total = widget.controller.imageGenTotal.value;
-          final eta = widget.controller.imageGenEstimatedSecs.value;
-          final decoding = widget.controller.imageGenDecoding.value;
-          final hasProgress = total > 0;
-          final pct = hasProgress ? (step / total).clamp(0.0, 1.0) : 0.0;
-          final isDone = decoding || (hasProgress && step >= total);
-
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              dots,
-              const SizedBox(height: 10),
-              Text(
-                isDone ? 'Decoding image' : 'Generating image',
-                style: GoogleFonts.inter(
-                  fontSize: 13,
-                  color: Theme.of(context).hintColor,
-                  fontWeight: FontWeight.w400,
-                ),
-              ),
-              if (hasProgress) ...[
-                const SizedBox(height: 10),
-                // Progress bar (pulse at 100% during decode)
-                Container(
-                  width: 160,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: (widget.isDark ? Colors.white : Colors.black)
-                        .withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                  child: FractionallySizedBox(
-                    alignment: Alignment.centerLeft,
-                    widthFactor: isDone ? 1.0 : pct,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: _appleBlue(context),
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                // Percentage + steps / decoding message
-                Text(
-                  isDone
-                      ? 'VAE decode in progress…'
-                      : '${(pct * 100).toStringAsFixed(0)}% · Step $step of $total',
-                  style: GoogleFonts.inter(
-                    fontSize: 11,
-                    color: Theme.of(context).hintColor.withValues(alpha: 0.6),
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                // Backend badge
-                const SizedBox(height: 5),
-                _backendChip(context),
-                // Elapsed time
-                const SizedBox(height: 3),
-                Text(
-                  'Elapsed: ${_fmtElapsed(_elapsedSeconds)}',
-                  style: GoogleFonts.inter(
-                    fontSize: 10,
-                    color: Theme.of(context).hintColor.withValues(alpha: 0.45),
-                  ),
-                ),
-                // ETA (only if we have a real estimate and not done)
-                if (eta > 0 && step >= 2 && !isDone) ...[
-                  const SizedBox(height: 3),
-                  Text(
-                    _fmtEta(eta),
-                    style: GoogleFonts.inter(
-                      fontSize: 10,
-                      color:
-                          Theme.of(context).hintColor.withValues(alpha: 0.45),
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 10),
-                // Cancel button
-                GestureDetector(
-                  onTap: widget.controller.stopGenerating,
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFF3B30).withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.stop_rounded,
-                            size: 12, color: Color(0xFFFF3B30)),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Cancel',
-                          style: GoogleFonts.inter(
-                            fontSize: 11,
-                            color: const Color(0xFFFF3B30),
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          );
-        });
-      },
     );
   }
 }

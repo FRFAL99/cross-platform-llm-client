@@ -1,14 +1,6 @@
 # PrivateLM
 
-[![Live Web App](https://img.shields.io/badge/Live_Demo-Try_Web_App-02569B?style=for-the-badge&logo=flutter&logoColor=white)](https://ai-chat-orailnoor.web.app/)
-
 A production-ready, cross-platform AI chat client built with Flutter. It unifies local on-device LLM inference (Android) with cloud API access, giving users full control over how their models run.
-
-![Image generation tested on Moto G71 (Snapdragon), Oneplus 10r (Mediatek), Pixel 6A (Tensor), Poco F1 (Snapdragon), Samsung s23 (Snapdragon) 4 steps fast](PrivateLM.png)
-_Image generation tested on Moto G71 (Snapdragon), Oneplus 10r (Mediatek), Pixel 6A (Tensor), Poco F1 (Snapdragon), Samsung s23 (Snapdragon) 4 steps fast_
-
-![Generated on pixel 6 with 20 step](IMG_2390.png)
-_Generated on pixel 6 with 20 step_
 
 ---
 
@@ -17,10 +9,8 @@ _Generated on pixel 6 with 20 step_
 - **Local Inference on Android** — Download and run GGUF models directly on your phone using GPU-accelerated inference (Vulkan). No internet required after download.
 - **Cloud API Fallback** — Seamlessly switch to OpenAI, Anthropic, Google Gemini, or Kimi (Moonshot AI) when you need more power or are on unsupported platforms.
 - **Multimodal Chat** — Send text and images in conversations. Vision support works with both local models (Qwen2-VL) and cloud providers.
-- **Persistent Sessions** — All chats and settings are stored locally via Hive. Nothing leaves your device unless you explicitly choose cloud mode.
-- **Background Services** — Firebase Cloud Messaging integration for push updates and background task handling.
+- **Persistent Sessions** — All chats and settings are stored locally via Hive; API keys go to the OS secure storage (Keystore/Keychain). Nothing leaves your device unless you explicitly choose cloud mode.
 - **Smart Auto-Configuration** — On first launch, the app detects your device's RAM and recommends optimal context size and token limits automatically.
-- **Task Management (in development)** — A task view for structured, multi-step AI workflows is being built. It is not available in the app yet.
 
 ---
 
@@ -32,8 +22,6 @@ _Generated on pixel 6 with 20 step_
 - **State Management:** GetX
 - **Local Storage:** Hive
 - **Networking:** Dio + `package:http`
-- **Background Execution:** `flutter_background_service` + `flutter_local_notifications`
-- **Push Notifications:** Firebase Core + Firebase Messaging
 
 ### Inference Pipeline
 
@@ -45,7 +33,7 @@ _Generated on pixel 6 with 20 step_
                            │
 ┌──────────────────────────▼──────────────────────────────────┐
 │                    Controllers (GetX)                        │
-│   ChatController · TaskController · ModelController         │
+│   ChatController · ModelController · ServerController       │
 │   SettingsController · HomeController                       │
 └──────────────────────────┬──────────────────────────────────┘
                            │
@@ -57,8 +45,8 @@ _Generated on pixel 6 with 20 step_
 │  │                 │  │  Gemini/Kimi)   │  │             │ │
 │  └─────────────────┘  └─────────────────┘  └─────────────┘ │
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────┐ │
-│  │  HiveService    │  │ DeviceInfoSvc   │  │ExecutionSvc │ │
-│  │  ( persistence) │  │  (RAM/GPU tier) │  │ (bg tasks)  │ │
+│  │  HiveService    │  │ DeviceInfoSvc   │  │ UpdateSvc   │ │
+│  │  ( persistence) │  │  (RAM/GPU tier) │  │ (GH release)│ │
 │  └─────────────────┘  └─────────────────┘  └─────────────┘ │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -117,7 +105,7 @@ Here is how you can install the app using AltStore and AltServer:
 * You must have **AltStore** successfully installed on your iOS device.
 
 **Installation Steps:**
-1. **Download the IPA:** Go to the [Releases](https://github.com/orailnoor/cross-platform-llm-client/releases) page on your iOS device (using Safari) and download the latest `PrivateLM-iOS.zip` package, extract it to get the `.ipa` file.
+1. **Download the IPA:** Go to the [Releases](https://github.com/FRFAL99/cross-platform-llm-client/releases) page on your iOS device (using Safari) and download the latest `PrivateLM-iOS.zip` package, extract it to get the `.ipa` file.
 2. **Open in AltStore:**
    * Locate the extracted `.ipa` file in your device's "Files" app.
    * Tap the **Share** button and select **AltStore** from the list of apps.
