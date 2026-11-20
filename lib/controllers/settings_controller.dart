@@ -57,10 +57,13 @@ class SettingsController extends GetxController {
   void _loadSettings() {
     final savedTheme = _hive.getSetting<String>('theme_mode');
     themeMode.value = _themeModeFromString(savedTheme);
-    globalSystemPrompt.value = _hive.getSetting(
+    final savedPrompt = _hive.getSetting<String>(
             AppConstants.keyGlobalSystemPrompt,
             defaultValue: AppConstants.systemPrompt) ??
         AppConstants.systemPrompt;
+    globalSystemPrompt.value = AppConstants.isDefaultSystemPrompt(savedPrompt)
+        ? AppConstants.systemPrompt
+        : savedPrompt;
     temperature.value = _hive.getSetting(AppConstants.keyTemperature,
             defaultValue: AppConstants.defaultTemperature) ??
         AppConstants.defaultTemperature;
@@ -127,12 +130,14 @@ class SettingsController extends GetxController {
     await _hive.setSetting(AppConstants.keyGlobalSystemPrompt, normalized);
   }
 
-  String effectiveSystemPromptForModel(String modelName) {
+  /// The user's system prompt, or the default for [modelName]. Uncensored
+  /// models get their own default only when [forUncensored] is set (the
+  /// chat): API clients get the same default whatever the file is called.
+  String effectiveSystemPromptForModel(String modelName,
+      {bool forUncensored = true}) {
     final prompt = globalSystemPrompt.value.trim();
-    final hasCustomPrompt =
-        prompt.isNotEmpty && prompt != AppConstants.systemPrompt;
-    if (hasCustomPrompt) return prompt;
-    if (AppConstants.isUncensoredModelName(modelName)) {
+    if (!AppConstants.isDefaultSystemPrompt(prompt)) return prompt;
+    if (forUncensored && AppConstants.isUncensoredModelName(modelName)) {
       return AppConstants.uncensoredSystemPrompt;
     }
     return AppConstants.systemPrompt;

@@ -23,7 +23,7 @@ If you installed the upstream PrivateLM before, uninstall it first: it uses the 
 
 ## Use it
 
-- **Models**: download a GGUF model from the catalogue (Hugging Face) or import a `.gguf` file, then load it.
+- **Models**: download a GGUF model from the catalogue (Hugging Face) or import a `.gguf` file, then load it. Every download is checked against its SHA-256 (pinned in the catalogue, or the one Hugging Face publishes for the file) and deleted if it doesn't match.
 - **Phone cluster** (Settings › Phone cluster): on each extra phone choose *Worker*; on the main phone choose *Master* and add each worker with the address and **pairing code** it shows (or *Find nearby*, then the code). The next model load spreads the layers across the phones.
   - Only a master that knows a worker's pairing code can use it. The phones exchange one-time X25519 keys and prove they know the code with HMAC-SHA256 over the exchange, so the code never crosses the network. Everything after that (model weights, activations, results) is encrypted and authenticated with ChaCha20-Poly1305, with fresh keys for every connection. Someone listening on the Wi-Fi learns nothing, even if they later learn the code; tampered data is refused. Both phones need this version: an older worker is reported as "different PrivateLM version". *New pairing code* on the worker locks out masters that knew the old one.
   - Encryption costs some speed when the model is first sent to the workers (roughly 300 MB/s per phone on a desktop CPU). Generation sends little data and is hardly affected.

@@ -1,4 +1,7 @@
 import 'dart:io';
+import 'dart:isolate';
+
+import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/services.dart';
@@ -66,7 +69,7 @@ Future<int> getRemoteFileSize(String url, {String? authToken}) async {
         followRedirects: true,
       ),
     );
-    
+
     // Check Content-Range header first (e.g., bytes 0-0/12345678)
     final contentRange = response.headers.value('content-range');
     if (contentRange != null) {
@@ -279,11 +282,36 @@ Future<bool> cancelNativeDownload({
 Future<List<Map<String, dynamic>>> getActiveNativeDownloads() async {
   if (!Platform.isAndroid) return [];
   try {
-    final List<dynamic>? result = await _channel.invokeListMethod<dynamic>('getActiveDownloads');
+    final List<dynamic>? result =
+        await _channel.invokeListMethod<dynamic>('getActiveDownloads');
     if (result == null) return [];
-    return result.map((item) => Map<String, dynamic>.from(item as Map)).toList();
+    return result
+        .map((item) => Map<String, dynamic>.from(item as Map))
+        .toList();
   } catch (e) {
     print('[DownloadNative] getActiveNativeDownloads failed: $e');
     return [];
   }
+}
+
+/// SHA-256 (lowercase hex) of the file at [path], computed off the UI
+/// thread.
+Future<String> sha256OfFile(String path) => Isolate.run(() async {
+      final output = _DigestSink();
+      final input = sha256.startChunkedConversion(output);
+      await for (final chunk in File(path).openRead()) {
+        input.add(chunk);
+      }
+      input.close();
+      return output.value.toString();
+    });
+
+class _DigestSink implements Sink<Digest> {
+  late Digest value;
+
+  @override
+  void add(Digest data) => value = data;
+
+  @override
+  void close() {}
 }

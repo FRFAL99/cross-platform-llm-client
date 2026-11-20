@@ -1,0 +1,37 @@
+name: Model catalogue
+
+# Checks every download in the model catalogue against Hugging Face: the
+# URL must still exist and the pinned SHA-256 must match the one Hugging
+# Face publishes. Entries without a pinned hash are listed with theirs, to
+# paste into lib/core/constants.dart (or run tool/pin_model_hashes.dart).
+
+on:
+  pull_request:
+    paths:
+      - lib/core/constants.dart
+      - lib/services/model_integrity.dart
+      - tool/pin_model_hashes.dart
+      - .github/workflows/model-catalogue.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hashes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.9
+          channel: stable
+          cache: true
+
+      - name: Dependencies
+        run: flutter pub get
+
+      - name: Check catalogue hashes
+        run: dart --packages=.dart_tool/package_config.json tool/pin_model_hashes.dart --check
