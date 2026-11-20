@@ -74,6 +74,7 @@ class ClusterChannel(
                     .putExtra(ClusterWorkerService.EXTRA_PORT,
                         call.argument<Int>("port") ?: ClusterWorkerService.DEFAULT_PORT)
                     .putExtra(ClusterWorkerService.EXTRA_THREADS, call.argument<Int>("threads") ?: 0)
+                    .putExtra(ClusterWorkerService.EXTRA_CODE, call.argument<String>("code") ?: "")
                 ContextCompat.startForegroundService(context, intent)
                 result.success(null)
             }
@@ -157,6 +158,15 @@ class ClusterChannel(
                 }
                 withContext(Dispatchers.Main) { result.success(found) }
             }
+            "checkWorker" -> scope.launch(Dispatchers.IO) {
+                val code = ClusterNative.nativeCheckWorker(
+                    context.applicationInfo.nativeLibraryDir,
+                    call.argument<String>("endpoint") ?: "",
+                    call.argument<String>("code") ?: "",
+                    call.argument<Int>("timeoutMs") ?: 3000
+                )
+                withContext(Dispatchers.Main) { result.success(code) }
+            }
             "probe" -> scope.launch {
                 val ok = probe(call.argument<String>("endpoint") ?: "", 2000)
                 withContext(Dispatchers.Main) { result.success(ok) }
@@ -165,18 +175,37 @@ class ClusterChannel(
                 val endpoints = call.argument<List<String>>("endpoints") ?: emptyList()
                 val weights = call.argument<List<Double>>("weights") ?: emptyList()
                 val localWeight = call.argument<Double>("localWeight") ?: 1.0
-                // llama.cpp aborts the whole app on an unreachable worker, so
-                // refuse the cluster unless every worker answers right now.
-                val unreachable = endpoints.filterNot { probe(it, 2000) }
+                val codes = call.argument<List<String>>("codes") ?: emptyList()
+                // llama.cpp aborts the whole app on an unreachable worker or a
+                // wrong pairing code, so refuse the cluster unless every
+                // worker accepts its code right now.
+                val libDir = context.applicationInfo.nativeLibraryDir
+                val failed = withContext(Dispatchers.IO) {
+                    endpoints.mapIndexedNotNull { i, ep ->
+                        val status = ClusterNative.nativeCheckWorker(libDir, ep, codes.getOrElse(i) { "" }, 3000)
+                        if (status == 0) null else ep to status
+                    }
+                }
                 withContext(Dispatchers.Main) {
-                    if (unreachable.isNotEmpty()) {
-                        result.error("UNREACHABLE", "Can't reach ${unreachable.joinToString()}", null)
+                    if (failed.isNotEmpty()) {
+                        val (ep, status) = failed.first()
+                        result.error(
+                            when (status) {
+                                2 -> "WRONG_CODE"
+                                3 -> "OLD_WORKER"
+                                4 -> "BUSY"
+                                else -> "UNREACHABLE"
+                            },
+                            ep,
+                            failed.map { it.first }
+                        )
                         return@withContext
                     }
                     ClusterNative.nativeSetCluster(
                         endpoints.toTypedArray(),
                         FloatArray(endpoints.size) { weights.getOrNull(it)?.toFloat() ?: 1f },
-                        localWeight.toFloat()
+                        localWeight.toFloat(),
+                        Array(endpoints.size) { codes.getOrElse(it) { "" } }
                     )
                     setLowLatencyWifi(endpoints.isNotEmpty())
                     result.success(null)

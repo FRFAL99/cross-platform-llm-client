@@ -29,7 +29,7 @@ Everything runs on the user's devices. The only network calls are the ones the u
 - **No hidden network calls**: fonts (Inter, Fira Code) are bundled in `assets/fonts` (no `google_fonts`), speech-to-text is on-device only, PDF text uses `pdfrx` (PDFium) instead of Syncfusion, and the cluster pairs by IP (no camera/ML Kit QR scanner). Don't add analytics, crash reporting or packages that fetch at runtime.
 - **Removed, don't bring back**: cloud providers, Task/ExecutionService (let the LLM run ADB shell commands), image generation (Stable Diffusion, Core ML, Stability AI), the LiteRT engine, Firebase/Crashlytics, the boot receiver.
 - One local engine only: llama.cpp with GGUF models.
-- **Phone cluster** is core. Its RPC workers have no authentication, so it is only for a trusted network; adding authentication is on the roadmap.
+- **Phone cluster** is core. Workers require a pairing code: a mutual HMAC-SHA256 challenge-response before the RPC HELLO (`ggml-rpc/privatelm-auth.h`, patched into Android's `ggml-rpc.cpp`); codes live in secure storage (`keyClusterWorkerCode`, `keyClusterPairingCodes`). Traffic is not encrypted. The master checks every worker with `LlamaCluster.checkWorker` before a load, because llama.cpp aborts on a failed connection. A worker that drops mid-generation no longer aborts the app: ggml-rpc logs "RPC worker lost", generation throws `CLUSTER_WORKER_LOST:<endpoint>` and `InferenceService` reloads the model. The iOS worker (`ios/llama_cpp_src`) is on an older llama.cpp (RPC v4) and has no pairing support.
 - **Chat storage**: messages live in a Hive `LazyBox` with a chatId → message ids index box; images are files under `chat_images/` (see `ChatImageStore`). Bump `HiveService._messageStorageVersion` and extend `_migrateMessages` when the layout changes.
 - Removed features' Hive keys are deleted on startup (`HiveService._removedFeatureKeys`, `_removedSecretKeys`).
 - New settings keys go in `AppConstants`. `HiveService.init` wipes unknown `server_*` keys: register new ones there.
@@ -38,7 +38,7 @@ Everything runs on the user's devices. The only network calls are the ones the u
 
 1. Done: cleanup and security, privacy pass (no hidden Google calls), removal of cloud providers, faster chat storage. Still open: the "uncensored" models in the catalogue; splitting huge files (`model_view.dart`, `chat_view.dart`, `model_controller.dart`).
 2. Server: make it solid for other apps. Done: request queue, per-request sampling, tool calling via `<tool_call>` prompts (`lib/services/server/tool_calling.dart`), JSON mode, background keep-alive (wake/Wi-Fi lock), examples in the Server tab. Still open: llama.cpp grammar for strict JSON/tool output, token usage in responses, a server that survives the app being swiped away.
-3. Cluster: authentication for RPC workers, reliability when a worker drops, clearer setup.
+3. Cluster. Done: pairing-code authentication, no crash when a worker drops (auto reload), TCP keepalive. Still open: encrypting cluster traffic, bringing the iOS worker to the current llama.cpp, continuing on the remaining phones without a full reload.
 4. Then: on-device tokens/s benchmark (phone and cluster), context management for long chats.
 
 ## Working conventions

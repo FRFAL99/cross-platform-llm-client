@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io' show File, InternetAddressType, NetworkInterface, Platform;
 import 'dart:math' as math;
 
@@ -12,6 +13,7 @@ import 'package:llama_flutter_android/llama_flutter_android.dart';
 import '../core/constants.dart';
 import '../core/ui.dart';
 import 'app_log_service.dart';
+import 'cluster_pairing.dart';
 import 'hive_service.dart';
 
 /// What this phone does in a phone cluster.
@@ -78,6 +80,12 @@ class ClusterService extends GetxService {
   /// This phone's Wi-Fi address, or null when it isn't on Wi-Fi.
   final wifiAddress = RxnString();
 
+  /// This phone's pairing code as a worker: a master must enter it.
+  final workerCode = ''.obs;
+
+  /// Master: pairing code per worker (by device ID, else endpoint).
+  final _codes = <String, String>{}.obs;
+
   /// How the loaded model is spread across phones; empty when it isn't.
   final split = <ClusterShare>[].obs;
 
@@ -104,6 +112,7 @@ class ClusterService extends GetxService {
     enabled.value = _hive.getSetting<bool>(AppConstants.keyClusterEnabled) ?? false;
     final saved = _hive.getSetting<List>(AppConstants.keyClusterWorkers) ?? const [];
     workers.assignAll(saved.whereType<Map>().map(ClusterWorker.fromMap));
+    _loadCodes();
     if (isSupported) {
       if (Platform.isIOS) {
         DeviceInfoPlugin().iosInfo.then((info) => deviceName = info.modelName);
@@ -163,7 +172,32 @@ class ClusterService extends GetxService {
     return '$host:${LlamaCluster.defaultPort}';
   }
 
+  /// The worker's pairing code, created on first use.
+  Future<String> ensureWorkerCode() async {
+    if (workerCode.value.isEmpty) {
+      final saved = ClusterPairing.normalize(
+          _hive.getSetting<String>(AppConstants.keyClusterWorkerCode) ?? '');
+      workerCode.value = saved ?? ClusterPairing.generate();
+      if (saved == null) {
+        await _hive.setSetting(AppConstants.keyClusterWorkerCode, workerCode.value);
+      }
+    }
+    return workerCode.value;
+  }
+
+  /// Makes a new pairing code, so masters that knew the old one can't use
+  /// this phone any more. Restarts a running worker to apply it.
+  Future<void> newWorkerCode() async {
+    workerCode.value = ClusterPairing.generate();
+    await _hive.setSetting(AppConstants.keyClusterWorkerCode, workerCode.value);
+    if (worker.value.running && !workerStopsWithApp) {
+      await stopWorker();
+      await startWorker();
+    }
+  }
+
   Future<void> startWorker() async {
+    final code = await ensureWorkerCode();
     if (Platform.isAndroid) {
       // Unrestricted battery keeps Android (Samsung especially) from moving
       // the worker to slow cores once it gets busy.
@@ -172,7 +206,7 @@ class ClusterService extends GetxService {
     }
     _workerRequested.value = true;
     worker.value = const ClusterWorkerStatus(state: 'starting');
-    await LlamaCluster.startWorker();
+    await LlamaCluster.startWorker(code: code);
     _watchWorker();
   }
 
@@ -224,9 +258,9 @@ class ClusterService extends GetxService {
 
   // ── Master: workers ────────────────────────────────────────────────────
 
-  /// Adds a worker by IP ("192.168.1.20" or "192.168.1.20:50052"). Returns
-  /// an error message, or null on success.
-  Future<String?> addManual(String input) async {
+  /// Adds a worker by IP ("192.168.1.20" or "192.168.1.20:50052") and its
+  /// pairing code. Returns an error message, or null on success.
+  Future<String?> addManual(String input, String code) async {
     final text = input.trim();
     if (text.isEmpty) return 'Enter the worker phone\'s IP address';
     final host = text.contains(':') ? text.substring(0, text.lastIndexOf(':')) : text;
@@ -243,10 +277,58 @@ class ClusterService extends GetxService {
         if (w.host == host && w.port == port) found = w;
       }
     } catch (_) {}
-    return _add(found ?? ClusterWorker(name: host, host: host, port: port));
+    return _add(found ?? ClusterWorker(name: host, host: host, port: port), code);
   }
 
-  Future<String?> addFound(ClusterWorker w) => _add(w);
+  Future<String?> addFound(ClusterWorker w, String code) => _add(w, code);
+
+  /// Saves a new pairing code for a worker already in the list.
+  Future<String?> setCode(ClusterWorker w, String code) => _add(w, code);
+
+  /// Whether the master knows this worker's pairing code. Workers added
+  /// before pairing codes existed need it entered once.
+  bool hasCode(ClusterWorker w) => _codeFor(w) != null;
+
+  String? _codeFor(ClusterWorker w) =>
+      (w.id != null ? _codes[w.id!] : null) ?? _codes[w.endpoint];
+
+  void _loadCodes() {
+    try {
+      final raw = _hive.getSetting<String>(AppConstants.keyClusterPairingCodes);
+      if (raw == null || raw.isEmpty) return;
+      final map = jsonDecode(raw);
+      if (map is Map) {
+        _codes.assignAll({
+          for (final e in map.entries)
+            if (e.key is String && e.value is String) e.key as String: e.value as String,
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _saveCodes() async {
+    // Drop codes of workers no longer in the list.
+    final keep = {
+      for (final w in workers) ...[w.endpoint, if (w.id != null) w.id!],
+    };
+    _codes.removeWhere((k, _) => !keep.contains(k));
+    await _hive.setSetting(AppConstants.keyClusterPairingCodes,
+        _codes.isEmpty ? '' : jsonEncode(Map<String, String>.from(_codes)));
+  }
+
+  /// A readable message for a failed pairing check, or null when it passed.
+  static String? checkMessage(ClusterCheck result, String endpoint) => switch (result) {
+        ClusterCheck.ok => null,
+        ClusterCheck.wrongCode =>
+          'Wrong pairing code for $endpoint. Check the code shown on the worker phone.',
+        ClusterCheck.oldVersion =>
+          '$endpoint runs an older PrivateLM (or isn\'t a PrivateLM worker). '
+              'Update the app on that phone.',
+        ClusterCheck.busy => '$endpoint is busy with another master phone.',
+        ClusterCheck.unsupported => 'This build has no phone cluster support.',
+        ClusterCheck.unreachable => 'Can\'t reach $endpoint. Check that the phone is a '
+            'worker and on the same Wi-Fi.',
+      };
 
   /// Finds saved workers that no longer answer at their address (they moved
   /// to another Wi-Fi, a hotspot, or got a new IP) by their device ID on
@@ -277,21 +359,29 @@ class ClusterService extends GetxService {
     return unreachable;
   }
 
-  Future<String?> _add(ClusterWorker worker) async {
-    if (!await LlamaCluster.probe(worker.endpoint)) {
-      return 'Can\'t reach ${worker.endpoint}. Check that the phone is a worker '
-          'and on the same Wi-Fi.';
+  Future<String?> _add(ClusterWorker worker, String input) async {
+    final code = ClusterPairing.normalize(input);
+    if (code == null) {
+      return 'The pairing code has 12 letters and digits, like ABCD-EFGH-JK23. '
+          'It is shown on the worker phone.';
     }
+    final error = checkMessage(
+        await LlamaCluster.checkWorker(worker.endpoint, code), worker.endpoint);
+    if (error != null) return error;
     workers.removeWhere((w) => w.endpoint == worker.endpoint);
     workers.add(worker);
     found.removeWhere((w) => w.endpoint == worker.endpoint);
+    _codes.remove(worker.endpoint);
+    _codes[worker.id ?? worker.endpoint] = code;
     await _save();
+    await _saveCodes();
     return null;
   }
 
   Future<void> remove(ClusterWorker w) async {
     workers.removeWhere((s) => s.endpoint == w.endpoint);
     await _save();
+    await _saveCodes();
   }
 
   bool isAdded(ClusterWorker w) => workers.any((s) => s.endpoint == w.endpoint);
@@ -339,10 +429,19 @@ class ClusterService extends GetxService {
     // Workers that are off or away are left out, not fatal: the model may
     // fit without them.
     final offline = await relocateWorkers();
-    final available = workers.where((w) => !offline.any((o) => o.endpoint == w.endpoint)).toList();
+    final unpaired = workers.where((w) => !hasCode(w)).toList();
+    final available = workers
+        .where((w) => !offline.any((o) => o.endpoint == w.endpoint) && hasCode(w))
+        .toList();
     if (offline.isNotEmpty) {
       final names = offline.map((w) => w.model ?? w.name).join(', ');
       showToast('Phone cluster', 'Not reachable, loading without: $names');
+    }
+    if (unpaired.isNotEmpty) {
+      final names = unpaired.map((w) => w.model ?? w.name).join(', ');
+      showToast('Phone cluster',
+          'Enter the pairing code in Phone cluster to use: $names',
+          tone: ToastTone.warning);
     }
 
     final modelMb = await File(modelPath).length() / (1024 * 1024);
@@ -391,11 +490,18 @@ class ClusterService extends GetxService {
         [for (final p in used) p.worker!],
         weights: [for (final p in used) p.assignedMb],
         localWeight: master.assignedMb,
+        codes: [for (final p in used) _codeFor(p.worker!) ?? ''],
       );
     } on PlatformException catch (e) {
-      throw Exception(
-          '${e.message ?? 'A worker is unreachable'}. Turn on Worker on that '
-          'phone, or set this phone\'s Phone cluster to Off.');
+      final endpoint = e.message ?? 'a worker';
+      final result = switch (e.code) {
+        'WRONG_CODE' => ClusterCheck.wrongCode,
+        'OLD_WORKER' => ClusterCheck.oldVersion,
+        'BUSY' => ClusterCheck.busy,
+        _ => ClusterCheck.unreachable,
+      };
+      throw Exception('${checkMessage(result, endpoint)} Or set this phone\'s '
+          'Phone cluster to Off.');
     }
     return used.length;
   }
@@ -491,6 +597,12 @@ class ClusterService extends GetxService {
   }
 
   void clearSplit() => split.clear();
+
+  /// A worker's display name for its endpoint ("host:port").
+  String nameFor(String endpoint) {
+    final w = workers.firstWhereOrNull((w) => w.endpoint == endpoint);
+    return w == null ? endpoint : (w.model ?? w.name);
+  }
 
   static String _gb(double mb) => '${(mb / 1024).toStringAsFixed(1)} GB';
 }

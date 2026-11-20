@@ -3,8 +3,10 @@
 #include "ggml-backend-impl.h"
 #include "ggml-cpp.h"
 #include "transport.h"
+#include "privatelm-auth.h"
 
 #include <array>
+#include <cerrno>
 #include <cinttypes>
 #include <optional>
 #include <string>
@@ -23,6 +25,16 @@
 #include <atomic>
 #include <thread>
 
+#ifndef _WIN32
+#  include <arpa/inet.h>
+#  include <fcntl.h>
+#  include <netdb.h>
+#  include <netinet/in.h>
+#  include <poll.h>
+#  include <sys/socket.h>
+#  include <unistd.h>
+#endif
+
 static const char * RPC_DEBUG = std::getenv("GGML_RPC_DEBUG");
 
 #define LOG_DBG(...) \
@@ -30,6 +42,23 @@ static const char * RPC_DEBUG = std::getenv("GGML_RPC_DEBUG");
 
 
 namespace fs = std::filesystem;
+
+// PrivateLM patch: pairing codes (see privatelm-auth.h). The worker has one
+// code; the master has one per worker endpoint. Empty means no handshake.
+static std::mutex g_auth_mutex;
+static std::string g_server_code;
+static std::unordered_map<std::string, std::string> g_client_codes;
+
+static std::string client_code_for(const std::string & endpoint) {
+    std::lock_guard<std::mutex> lock(g_auth_mutex);
+    auto it = g_client_codes.find(endpoint);
+    return it == g_client_codes.end() ? std::string() : it->second;
+}
+
+static std::string server_code() {
+    std::lock_guard<std::mutex> lock(g_auth_mutex);
+    return g_server_code;
+}
 
 // macro for nicer error messages on server crash
 #define RPC_STATUS_ASSERT(x) if (!(x)) GGML_ABORT("Remote RPC server crashed or returned malformed response")
@@ -443,6 +472,11 @@ private:
     socket_ptr       sock;
     std::atomic_bool running;
     std::thread      thread;
+    std::string      endpoint;
+    // PrivateLM patch: set once the worker stops answering. Requests then
+    // complete with zeroed results instead of aborting the whole app; the
+    // app sees "RPC worker lost" in the log and stops generating.
+    bool             lost = false;
 };
 
 static void rpc_dispatcher_trampoline(rpc_dispatcher * dispatcher)
@@ -546,6 +580,21 @@ void rpc_dispatcher::start(const std::string & endpoint) {
     if (sock == nullptr) {
         GGML_ABORT("Failed to connect to %s\n", endpoint.c_str());
     }
+    this->endpoint = endpoint;
+    // PrivateLM patch: prove we know the worker's pairing code. The app
+    // checks the code first (ggml_backend_rpc_check_server), so a failure
+    // here means the worker changed between the check and the load.
+    const std::string code = client_code_for(endpoint);
+    if (!code.empty()) {
+        auto s = sock;
+        const auto res = privatelm_auth::connect(code,
+            [s](const void * d, size_t n) { return s->send_data(d, n); },
+            [s](void * d, size_t n) { return s->recv_data(d, n); },
+            [s]() { return s->flush(); });
+        if (res != privatelm_auth::OK) {
+            GGML_ABORT("Pairing with %s failed (%d)\n", endpoint.c_str(), (int)res);
+        }
+    }
     if (!negotiate_hello(sock)) {
         GGML_ABORT("RPC handshake failed for %s\n", endpoint.c_str());
     }
@@ -561,12 +610,23 @@ void rpc_dispatcher::work() {
             break;
         }
         if (msg_ptr->cmd != RPC_CMD_NONE) {
-            if (msg_ptr->output) {
-                bool status = send_rpc_cmd(sock, msg_ptr->cmd, msg_ptr->input.get(), msg_ptr->input_size, msg_ptr->output, msg_ptr->output_size);
-                RPC_STATUS_ASSERT(status);
-            } else {
-                bool status = send_rpc_cmd(sock, msg_ptr->cmd, msg_ptr->input.get(), msg_ptr->input_size);
-                RPC_STATUS_ASSERT(status);
+            bool status = false;
+            if (!lost) {
+                if (msg_ptr->output) {
+                    status = send_rpc_cmd(sock, msg_ptr->cmd, msg_ptr->input.get(), msg_ptr->input_size, msg_ptr->output, msg_ptr->output_size);
+                } else {
+                    status = send_rpc_cmd(sock, msg_ptr->cmd, msg_ptr->input.get(), msg_ptr->input_size);
+                }
+            }
+            if (!status) {
+                if (!lost) {
+                    lost = true;
+                    sock = nullptr;  // hang up, so a worker that's still alive is freed
+                    GGML_LOG_ERROR("RPC worker lost: %s\n", endpoint.c_str());
+                }
+                if (msg_ptr->output && msg_ptr->output_size > 0) {
+                    std::memset(msg_ptr->output, 0, msg_ptr->output_size);
+                }
             }
         }
         msg_ptr->completion.set_value();
@@ -1812,6 +1872,24 @@ rpc_server::~rpc_server() {
 
 static void rpc_serve_client(const std::vector<ggml_backend_t> & backends, const char * cache_dir,
                              socket_ptr sock) {
+    // PrivateLM patch: only a master that knows the pairing code gets in.
+    const std::string code = server_code();
+    if (!code.empty()) {
+        // A client that connects and says nothing must not hold the worker.
+        sock->set_recv_timeout(10000);
+        const auto res = privatelm_auth::serve(code,
+            [&sock](const void * d, size_t n) { return sock->send_data(d, n); },
+            [&sock](void * d, size_t n) { return sock->recv_data(d, n); },
+            [&sock]() { return sock->flush(); });
+        if (res == privatelm_auth::WRONG_CODE) {
+            GGML_LOG_WARN("RPC client rejected: wrong pairing code\n");
+            return;
+        }
+        if (res != privatelm_auth::OK) {
+            return;  // a reachability probe, or the client left
+        }
+        sock->set_recv_timeout(0);
+    }
     rpc_server server(backends, cache_dir);
     uint8_t cmd;
     if (!sock->recv_data(&cmd, 1)) {
@@ -2286,12 +2364,113 @@ static ggml_backend_dev_t ggml_backend_rpc_reg_get_device(ggml_backend_reg_t reg
     }
 }
 
+// ── PrivateLM patch: pairing codes ──────────────────────────────────────
+
+/// Worker: the code masters must know. Empty turns the handshake off.
+static void ggml_backend_rpc_set_server_code(const char * code) {
+    std::lock_guard<std::mutex> lock(g_auth_mutex);
+    g_server_code = code ? code : "";
+}
+
+/// Master: the code for one worker endpoint ("host:port").
+static void ggml_backend_rpc_set_client_code(const char * endpoint, const char * code) {
+    if (!endpoint) return;
+    std::lock_guard<std::mutex> lock(g_auth_mutex);
+    if (code && *code) {
+        g_client_codes[endpoint] = code;
+    } else {
+        g_client_codes.erase(endpoint);
+    }
+}
+
+/// Master: connects to a worker and runs the pairing handshake, without
+/// ever aborting. 0 ok, 1 unreachable, 2 wrong code, 3 not a PrivateLM
+/// worker (or an older app), 4 busy (serving another master).
+static int ggml_backend_rpc_check_server(const char * endpoint, const char * code, int timeout_ms) {
+#ifdef _WIN32
+    GGML_UNUSED(endpoint); GGML_UNUSED(code); GGML_UNUSED(timeout_ms);
+    return 1;
+#else
+    std::string host;
+    int port;
+    if (!endpoint || !parse_endpoint(endpoint, host, port)) return 1;
+    addrinfo hints = {};
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+    addrinfo * info = nullptr;
+    if (getaddrinfo(host.c_str(), std::to_string(port).c_str(), &hints, &info) != 0 || !info) return 1;
+    const int fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0) { freeaddrinfo(info); return 1; }
+    struct closer { int fd; ~closer() { close(fd); } } guard{fd};
+
+    // Connect with a timeout.
+    const int flags = fcntl(fd, F_GETFL, 0);
+    fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+    int rc = ::connect(fd, info->ai_addr, info->ai_addrlen);
+    freeaddrinfo(info);
+    if (rc != 0) {
+        if (errno != EINPROGRESS) return 1;
+        pollfd p = {fd, POLLOUT, 0};
+        if (poll(&p, 1, timeout_ms) != 1) return 1;
+        int err = 0;
+        socklen_t len = sizeof(err);
+        getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &len);
+        if (err != 0) return 1;
+    }
+    fcntl(fd, F_SETFL, flags);
+    timeval tv = {timeout_ms / 1000, (timeout_ms % 1000) * 1000};
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+
+    bool timed_out = false;
+    auto send_all = [fd](const void * d, size_t n) {
+        const char * p = (const char *)d;
+        while (n > 0) {
+            const ssize_t w = ::send(fd, p, n, MSG_NOSIGNAL);
+            if (w <= 0) return false;
+            p += w; n -= (size_t)w;
+        }
+        return true;
+    };
+    auto recv_all = [fd, &timed_out](void * d, size_t n) {
+        char * p = (char *)d;
+        while (n > 0) {
+            const ssize_t r = ::recv(fd, p, n, 0);
+            if (r < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) timed_out = true;
+            if (r <= 0) return false;
+            p += r; n -= (size_t)r;
+        }
+        return true;
+    };
+    const auto res = privatelm_auth::connect(code ? std::string(code) : std::string(),
+                                             send_all, recv_all, [] { return true; });
+    switch (res) {
+        case privatelm_auth::OK:            return 0;
+        case privatelm_auth::WRONG_CODE:    return 2;
+        case privatelm_auth::NOT_PRIVATELM: return 3;
+        default:
+            // A worker serves one master at a time: a busy one accepts the
+            // connection but doesn't greet until it's free.
+            return timed_out ? 4 : 1;
+    }
+#endif
+}
+
 static void * ggml_backend_rpc_get_proc_address(ggml_backend_reg_t reg, const char * name) {
     if (std::strcmp(name, "ggml_backend_rpc_add_server") == 0) {
         return (void *)ggml_backend_rpc_add_server;
     }
     if (std::strcmp(name, "ggml_backend_rpc_start_server") == 0) {
         return (void *)ggml_backend_rpc_start_server;
+    }
+    if (std::strcmp(name, "ggml_backend_rpc_set_server_code") == 0) {
+        return (void *)ggml_backend_rpc_set_server_code;
+    }
+    if (std::strcmp(name, "ggml_backend_rpc_set_client_code") == 0) {
+        return (void *)ggml_backend_rpc_set_client_code;
+    }
+    if (std::strcmp(name, "ggml_backend_rpc_check_server") == 0) {
+        return (void *)ggml_backend_rpc_check_server;
     }
     return NULL;
 

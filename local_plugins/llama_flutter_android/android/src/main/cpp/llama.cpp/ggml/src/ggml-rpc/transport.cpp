@@ -490,7 +490,13 @@ bool socket_t::impl::send_data(const void * data, size_t size) {
     size_t bytes_sent = 0;
     while (bytes_sent < size) {
         size_t size_to_send = std::min(size - bytes_sent, MAX_CHUNK_SIZE);
+        // PrivateLM patch: a worker that hung up must surface as an error,
+        // not a SIGPIPE that kills the app.
+#if defined(MSG_NOSIGNAL)
+        ssize_t n = send(fd, (const char *)data + bytes_sent, size_to_send, MSG_NOSIGNAL);
+#else
         ssize_t n = send(fd, (const char *)data + bytes_sent, size_to_send, 0);
+#endif
         if (n < 0) {
             GGML_LOG_ERROR("send failed (bytes_sent=%zu, size_to_send=%zu)\n",
                            bytes_sent, size_to_send);
@@ -635,6 +641,43 @@ static bool set_no_delay(sockfd_t sockfd) {
     return ret == 0;
 }
 
+// PrivateLM patch: notice a peer that vanished without closing the
+// connection (Wi-Fi off, phone asleep) in about 30 s instead of blocking
+// forever. Keepalive probes are answered by the peer's kernel, so a busy
+// but healthy worker is never cut off.
+static void set_keepalive(sockfd_t sockfd) {
+#ifndef _WIN32
+    int on = 1;
+    setsockopt(sockfd, SOL_SOCKET, SO_KEEPALIVE, &on, sizeof(on));
+#  if defined(TCP_KEEPIDLE)
+    int idle = 10, interval = 5, count = 4;
+    setsockopt(sockfd, IPPROTO_TCP, TCP_KEEPIDLE, &idle, sizeof(idle));
+    setsockopt(sockfd, IPPROTO_TCP, TCP_KEEPINTVL, &interval, sizeof(interval));
+    setsockopt(sockfd, IPPROTO_TCP, TCP_KEEPCNT, &count, sizeof(count));
+#  elif defined(TCP_KEEPALIVE)
+    int idle = 10;
+    setsockopt(sockfd, IPPROTO_TCP, TCP_KEEPALIVE, &idle, sizeof(idle));
+#  endif
+#  if defined(TCP_USER_TIMEOUT)
+    // Unacknowledged sends give up after 30 s too.
+    unsigned int user_timeout = 30000;
+    setsockopt(sockfd, IPPROTO_TCP, TCP_USER_TIMEOUT, &user_timeout, sizeof(user_timeout));
+#  endif
+#else
+    GGML_UNUSED(sockfd);
+#endif
+}
+
+void socket_t::set_recv_timeout(int ms) {
+#ifndef _WIN32
+    timeval tv = {ms / 1000, (ms % 1000) * 1000};
+    setsockopt(pimpl->fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+#else
+    DWORD timeout = (DWORD)ms;
+    setsockopt(pimpl->fd, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof(timeout));
+#endif
+}
+
 static bool set_reuse_addr(sockfd_t sockfd) {
     int flag = 1;
     int ret = setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, (char *)&flag, sizeof(int));
@@ -663,6 +706,7 @@ socket_ptr socket_t::accept() {
         GGML_LOG_ERROR("Failed to set TCP_NODELAY\n");
         return nullptr;
     }
+    set_keepalive(client_socket_fd);
 #if defined(__APPLE__) && defined(SO_NET_SERVICE_TYPE)
     // PrivateLM patch: interactive-voice class, so an iPad/iPhone worker's
     // Wi-Fi doesn't doze between tokens (100-300 ms delays otherwise).
@@ -720,6 +764,7 @@ socket_ptr socket_t::connect(const char * host, int port) {
     if (::connect(sockfd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
         return nullptr;
     }
+    set_keepalive(sockfd);
     return socket_ptr(new socket_t(std::make_unique<impl>(sockfd)));
 }
 

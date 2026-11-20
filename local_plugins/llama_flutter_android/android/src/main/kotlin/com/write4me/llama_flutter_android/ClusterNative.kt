@@ -12,16 +12,28 @@ object ClusterNative {
      * Sets the workers the next model load spreads its layers across. Each
      * worker gets a share of the offloaded layers by its weight (e.g. free
      * RAM); this phone keeps a share by [localWeight]. An empty list turns
-     * cluster mode off. Every endpoint must already be reachable: llama.cpp
-     * aborts the process if it can't connect.
+     * cluster mode off. Every endpoint must already have passed
+     * [nativeCheckWorker] with its [codes] entry: llama.cpp aborts the process
+     * if it can't connect or the pairing code is wrong.
      */
-    external fun nativeSetCluster(endpoints: Array<String>, weights: FloatArray, localWeight: Float)
+    external fun nativeSetCluster(
+        endpoints: Array<String>, weights: FloatArray, localWeight: Float, codes: Array<String>
+    )
 
     /**
-     * Serves this phone's CPU to a coordinator. Blocks for as long as the
-     * server runs; returns why it stopped if it couldn't start.
+     * Connects to a worker and checks its pairing code, without the risk of
+     * an abort. 0 ok, 1 unreachable, 2 wrong code, 3 not a PrivateLM worker
+     * or an older version, 4 busy with another master, 5 no cluster support.
      */
-    external fun nativeServe(libDir: String, endpoint: String, cacheDir: String, nThreads: Long): String?
+    external fun nativeCheckWorker(libDir: String, endpoint: String, code: String, timeoutMs: Int): Int
+
+    /**
+     * Serves this phone's CPU to a coordinator that knows [code]. Blocks for
+     * as long as the server runs; returns why it stopped if it couldn't start.
+     */
+    external fun nativeServe(
+        libDir: String, endpoint: String, cacheDir: String, nThreads: Long, code: String
+    ): String?
 
     /** "<buffer name>\t<MiB>" lines: where the last load put its weights. */
     external fun nativeLastLoadBuffers(): String

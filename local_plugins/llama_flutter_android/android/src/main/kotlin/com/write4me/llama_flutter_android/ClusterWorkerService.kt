@@ -41,6 +41,7 @@ class ClusterWorkerService : Service() {
         const val ACTION_STOP = "com.write4me.llama_flutter_android.STOP_CLUSTER_WORKER"
         const val EXTRA_PORT = "port"
         const val EXTRA_THREADS = "threads"
+        const val EXTRA_CODE = "code"
         const val DEFAULT_PORT = 50052
         const val SERVICE_TYPE = "_privatelm._tcp."
         const val PROCESS_SUFFIX = ":cluster"
@@ -87,6 +88,12 @@ class ClusterWorkerService : Service() {
         }
         startForeground(NOTIFICATION_ID, buildNotification("Starting…"))
         if (running) return START_NOT_STICKY
+        val code = intent?.getStringExtra(EXTRA_CODE).orEmpty()
+        if (code.isEmpty()) {
+            writeStatus("error", error = "Worker needs a pairing code")
+            shutdown()
+            return START_NOT_STICKY
+        }
 
         running = true
         val port = intent?.getIntExtra(EXTRA_PORT, DEFAULT_PORT) ?: DEFAULT_PORT
@@ -109,7 +116,8 @@ class ClusterWorkerService : Service() {
                 applicationInfo.nativeLibraryDir,
                 "0.0.0.0:$port",
                 cacheDir.absolutePath,
-                threads.toLong()
+                threads.toLong(),
+                code
             )
             Log.e(TAG, "Worker exited: $error")
             writeStatus("error", error = error ?: "Worker stopped")

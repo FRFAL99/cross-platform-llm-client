@@ -30,6 +30,8 @@ class HiveService extends GetxService {
   /// (Android Keystore / iOS & macOS Keychain) instead of the plain Hive box.
   static const secretKeys = {
     AppConstants.keyServerApiKey,
+    AppConstants.keyClusterWorkerCode,
+    AppConstants.keyClusterPairingCodes,
   };
 
   /// Settings of removed features (Stable Diffusion and Stability AI image

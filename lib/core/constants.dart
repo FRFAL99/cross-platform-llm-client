@@ -42,6 +42,13 @@ class AppConstants {
   static const String keyServerAllowNetwork = 'server_allow_network';
   static const String keyClusterEnabled = 'cluster_enabled';
   static const String keyClusterWorkers = 'cluster_workers';
+  /// This phone's pairing code as a worker (secure storage).
+  static const String keyClusterWorkerCode = 'cluster_worker_code';
+  /// Master: pairing code of each worker, JSON {worker id or endpoint: code}
+  /// (secure storage).
+  static const String keyClusterPairingCodes = 'cluster_pairing_codes';
+  /// Prefix of the native generation error when a cluster worker drops.
+  static const String clusterWorkerLostError = 'CLUSTER_WORKER_LOST:';
   static const String keyFontScale = 'font_scale';
   static const String keyMessageStorageVersion = 'message_storage_version';
 
