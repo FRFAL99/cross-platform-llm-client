@@ -8,6 +8,7 @@ import 'app_log_service.dart';
 import 'cluster_service.dart';
 import 'context_window.dart';
 import 'history_summary.dart';
+import 'lost_worker_retry.dart';
 import '../utils/thought_parser.dart';
 import 'stop_sequence_filter.dart';
 import '../core/ui.dart' show showToast, ToastTone;
@@ -260,7 +261,6 @@ class InferenceService extends GetxService {
   /// What the last successful load used, to reload after a cluster worker
   /// drops out.
   ({String path, String? name, String? mmproj})? _lastLoad;
-  bool _recoveringCluster = false;
 
   /// The loaded GGUF model has a working vision projector (images allowed).
   bool get ggufVisionLoaded => _engine?.ggufVisionLoaded ?? false;
@@ -400,43 +400,40 @@ class InferenceService extends GetxService {
     }
   }
 
-  /// A worker stopped answering mid-answer: the model is missing its layers,
-  /// so reload it (the cluster plan leaves out workers that don't answer).
-  String _onClusterWorkerLost(String error) {
-    final endpoint =
-        RegExp('${AppConstants.clusterWorkerLostError}([0-9A-Za-z.:\\-]+)')
-                .firstMatch(error)
-                ?.group(1) ??
-            'a worker';
-    final name = Get.isRegistered<ClusterService>()
-        ? Get.find<ClusterService>().nameFor(endpoint)
-        : endpoint;
-    Get.find<AppLogService>()
-        .error('Phone cluster worker lost', details: endpoint);
-    unawaited(_recoverFromLostWorker(name));
-    return 'ERROR: The phone cluster lost $name in the middle of this answer. '
-        'Reloading the model without it; try again in a moment.';
-  }
+  /// Endpoint of the cluster worker that dropped out during the last
+  /// generation, set by [_generateOnce].
+  String? _lostWorker;
 
-  Future<void> _recoverFromLostWorker(String name) async {
+  /// The reload after a lost worker, shared by every request that hit it.
+  Future<bool>? _recovery;
+
+  /// A worker stopped answering mid-answer: the model is missing its layers,
+  /// so reload it (the cluster plan leaves out workers that don't answer;
+  /// the workers that stayed keep the model's tensors in their cache, so
+  /// only the lost worker's share travels again). True if it reloaded.
+  Future<bool> _recoverFromLostWorker(String name) {
+    final running = _recovery;
+    if (running != null) return running;
     final last = _lastLoad;
-    if (_recoveringCluster || last == null) return;
-    _recoveringCluster = true;
-    try {
-      showToast(
-          'Phone cluster', '$name stopped answering. Reloading the model…',
-          tone: ToastTone.warning);
-      final message = await loadModel(last.path,
-          modelName: last.name, mmprojPath: last.mmproj);
-      if (message.startsWith('ERROR')) {
-        showToast('Model not reloaded', message.replaceFirst('ERROR: ', ''),
-            tone: ToastTone.error);
-      } else {
+    if (last == null) return Future.value(false);
+    return _recovery = () async {
+      try {
+        showToast(
+            'Phone cluster', '$name stopped answering. Reloading the model…',
+            tone: ToastTone.warning);
+        final message = await loadModel(last.path,
+            modelName: last.name, mmprojPath: last.mmproj);
+        if (message.startsWith('ERROR')) {
+          showToast('Model not reloaded', message.replaceFirst('ERROR: ', ''),
+              tone: ToastTone.error);
+          return false;
+        }
         showToast('Model reloaded', message, tone: ToastTone.success);
+        return true;
+      } finally {
+        _recovery = null;
       }
-    } finally {
-      _recoveringCluster = false;
-    }
+    }();
   }
 
   Future<void> unloadModel() async {
@@ -446,7 +443,10 @@ class InferenceService extends GetxService {
       Get.find<ClusterService>().clearSplit();
     }
     if (engine != null) {
-      await stopGeneration();
+      // Only count a stop when something was running: callers compare
+      // stopCount to tell an interrupted answer, and a reload after a lost
+      // cluster worker must not look like one.
+      if (isGenerating.value) await stopGeneration();
       await engine.dispose();
     }
     isModelLoaded.value = false;
@@ -463,7 +463,73 @@ class InferenceService extends GetxService {
     _sessionNativeRuntime = '';
   }
 
+  /// Generates a reply (see [_generateOnce]). If a phone of the cluster
+  /// drops out meanwhile, the model is reloaded on the phones that are left
+  /// and the request runs again once, so the caller still gets its answer.
+  /// The retry is only transparent while nothing was streamed yet; a caller
+  /// that can take back what it showed passes [onRestart], which is called
+  /// before the second run starts streaming from the beginning.
   Future<String> generate({
+    required String prompt,
+    String? systemPrompt,
+    List<Map<String, String>>? conversationHistory,
+    String source = 'chat',
+    String? imagePath,
+    String? audioPath,
+    int? maxTokens,
+    List<String> stopSequences = const [],
+    double? temperature,
+    double? topP,
+    String? grammar,
+    String? grammarTrigger,
+    void Function(String token)? onToken,
+    void Function()? onRestart,
+  }) async {
+    var stops = _stopCount;
+    return LostWorkerRetry.run(
+      attempt: (forward) async {
+        _lostWorker = null;
+        final text = await _generateOnce(
+          prompt: prompt,
+          systemPrompt: systemPrompt,
+          conversationHistory: conversationHistory,
+          source: source,
+          imagePath: imagePath,
+          audioPath: audioPath,
+          maxTokens: maxTokens,
+          stopSequences: stopSequences,
+          temperature: temperature,
+          topP: topP,
+          grammar: grammar,
+          grammarTrigger: grammarTrigger,
+          onToken: forward,
+        );
+        final lost = _lostWorker;
+        _lostWorker = null;
+        return (text: text, lostWorker: lost);
+      },
+      nameFor: (worker) => Get.isRegistered<ClusterService>()
+          ? Get.find<ClusterService>().nameFor(worker)
+          : worker,
+      recover: (worker) {
+        stops = _stopCount;
+        Get.find<AppLogService>()
+            .error('Phone cluster worker lost', details: worker);
+        final name = Get.isRegistered<ClusterService>()
+            ? Get.find<ClusterService>().nameFor(worker)
+            : worker;
+        return _recoverFromLostWorker(name);
+      },
+      stopped: () => _stopCount != stops,
+      onRetry: (worker) => Get.find<AppLogService>()
+          .info('Phone cluster: answering again without $worker'),
+      onToken: onToken,
+      onRestart: onRestart,
+    );
+  }
+
+  /// One generation with the loaded model.
+  Future<String> _generateOnce({
     required String prompt,
     String? systemPrompt,
     List<Map<String, String>>? conversationHistory,
@@ -626,7 +692,8 @@ class InferenceService extends GetxService {
       }
 
       if (result.contains(AppConstants.clusterWorkerLostError)) {
-        return _onClusterWorkerLost(result);
+        _lostWorker = _lostEndpoint(result);
+        return result;
       }
       return finalText;
     } catch (e) {
@@ -636,10 +703,20 @@ class InferenceService extends GetxService {
         streamingText.value = '';
         flushTokenBuffer();
       }
+      if ('$e'.contains(AppConstants.clusterWorkerLostError)) {
+        _lostWorker = _lostEndpoint('$e');
+        return 'ERROR: $e';
+      }
       Get.find<AppLogService>().error('Local generation failed', details: e);
       return 'ERROR: $e';
     }
   }
+
+  static String _lostEndpoint(String error) =>
+      RegExp('${AppConstants.clusterWorkerLostError}([0-9A-Za-z.:\\-]+)')
+          .firstMatch(error)
+          ?.group(1) ??
+      'a worker';
 
   Future<void> stopGeneration() async {
     _generationId++;
