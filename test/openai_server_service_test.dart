@@ -610,6 +610,7 @@ class FakeInference extends GetxService implements InferenceService {
     String? grammar,
     String? grammarTrigger,
     void Function(String token)? onToken,
+    void Function()? onRestart,
   }) async {
     lastGrammar = grammar;
     lastGrammarTrigger = grammarTrigger;

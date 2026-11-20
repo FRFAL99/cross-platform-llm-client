@@ -606,6 +606,14 @@ class ChatController extends GetxController {
           trackThoughtTiming();
           _scrollToBottom();
         },
+        // A phone of the cluster dropped out: the answer starts over on the
+        // phones that are left.
+        onRestart: () {
+          if (generationId != _generationSerial) return;
+          streamingResponse.value = '';
+          thoughtStartedAt = null;
+          thoughtDurationSeconds = null;
+        },
       );
 
       if (thoughtStartedAt != null && thoughtDurationSeconds == null) {
