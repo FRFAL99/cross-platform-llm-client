@@ -34,7 +34,7 @@ Everything runs on the user's devices. The only network calls are the ones the u
 - Removed features' Hive keys are deleted on startup (`HiveService._removedFeatureKeys`, `_removedSecretKeys`).
 - New settings keys go in `AppConstants`. `HiveService.init` wipes unknown `server_*` keys: register new ones there.
 
-## Roadmap (proposed, to confirm with Francesco)
+## Roadmap (agreed order)
 
 1. Done: cleanup and security, privacy pass (no hidden Google calls), removal of cloud providers, faster chat storage. Still open: the "uncensored" models in the catalogue; splitting huge files (`model_view.dart`, `chat_view.dart`, `model_controller.dart`).
 2. Server: make it solid for other apps (streaming, tool/function calling if the model supports it, keep running in the background, clear connection info and examples).
