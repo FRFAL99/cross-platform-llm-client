@@ -25,7 +25,21 @@ If you installed the upstream PrivateLM before, uninstall it first: it uses the 
 
 - **Models**: download a GGUF model from the catalogue (Hugging Face) or import a `.gguf` file, then load it.
 - **Phone cluster** (Settings › Phone cluster): on each extra phone choose *Worker*; on the main phone choose *Master* and add each worker by the address it shows (or *Find nearby*). The next model load spreads the layers across the phones. Workers accept unauthenticated connections, so use it only on a trusted Wi-Fi.
-- **API server** (Server tab): start it and point any OpenAI client at `http://<phone>:<port>/v1` (`/v1/chat/completions`, `/v1/completions`, `/v1/models`). Turn on network mode to reach it from other devices on the Wi-Fi; it then requires the API key shown in the app.
+- **API server** (Server tab): start it and point any OpenAI client at `http://<phone>:8080/v1`. Turn on network mode to reach it from other devices on the Wi-Fi; it then requires the API key shown in the app. The Server tab has copy-ready examples (curl, Python, JavaScript).
+
+### API server
+
+| Endpoint | Notes |
+|---|---|
+| `POST /v1/chat/completions` | `stream`, `max_tokens`, `stop`, `temperature`, `top_p`, `tools` / `tool_choice`, `response_format` (`json_object`, `json_schema`), one image per request with a vision model |
+| `POST /v1/completions` | plain prompt completion, streaming supported |
+| `GET /v1/models` | the loaded model; any `model` name in a request is served by it |
+| `GET /health` | no key needed |
+
+- **One request at a time.** Others wait in a queue (up to 8, for up to 5 minutes) and then get `429` with `Retry-After`.
+- **Tool calling** works through the prompt: tools are described with the `<tools>` / `<tool_call>` convention and the reply is parsed back into OpenAI `tool_calls`. Use a model trained for it (Qwen 2.5/3, Hermes, Llama 3.1+, Mistral). Tool results go back as `role: "tool"` messages as usual.
+- **JSON mode** is an instruction to the model, not a grammar, so validate the output.
+- **Background (Android).** While the server runs and the model stays loaded, it keeps answering with the screen off or another app in front (foreground service, wake lock, Wi-Fi lock). Allow PrivateLM to run without battery limits when the Server tab asks. Swiping the app away from recent apps stops it.
 
 ## Network use
 

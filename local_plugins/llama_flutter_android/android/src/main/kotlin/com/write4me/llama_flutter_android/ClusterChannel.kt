@@ -113,6 +113,11 @@ class ClusterChannel(
                 }
                 result.success(null)
             }
+            "isBatteryUnrestricted" -> result.success(isBatteryUnrestricted())
+            "setServerKeepAlive" -> {
+                setServerKeepAlive(call.argument<Boolean>("on") == true)
+                result.success(null)
+            }
             "requestBatteryUnrestricted" -> {
                 // Android's own prompt; Samsung otherwise throttles a busy
                 // worker in the background (slow cores, low CPU share).
@@ -204,9 +209,49 @@ class ClusterChannel(
         }
     }
 
+    private var serverWakeLock: PowerManager.WakeLock? = null
+    private var serverWifiLock: WifiManager.WifiLock? = null
+
+    /**
+     * API server: the inference foreground service keeps the process alive
+     * while a model is loaded; these locks keep the CPU running and the
+     * Wi-Fi radio out of power save so requests still arrive and get
+     * answered with the screen off.
+     */
+    private fun setServerKeepAlive(on: Boolean) {
+        if (on) {
+            if (serverWakeLock == null) {
+                val power = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+                serverWakeLock = power.newWakeLock(
+                    PowerManager.PARTIAL_WAKE_LOCK, "PrivateLM:ApiServer"
+                ).apply {
+                    setReferenceCounted(false)
+                    acquire()
+                }
+            }
+            if (serverWifiLock == null) {
+                val wifi = context.applicationContext
+                    .getSystemService(Context.WIFI_SERVICE) as WifiManager
+                @Suppress("DEPRECATION")
+                serverWifiLock = wifi.createWifiLock(
+                    WifiManager.WIFI_MODE_FULL_HIGH_PERF, "PrivateLM:ApiServer"
+                ).apply {
+                    setReferenceCounted(false)
+                    acquire()
+                }
+            }
+        } else {
+            serverWakeLock?.takeIf { it.isHeld }?.release()
+            serverWakeLock = null
+            serverWifiLock?.takeIf { it.isHeld }?.release()
+            serverWifiLock = null
+        }
+    }
+
     fun dispose() {
         runCatching { context.unbindService(workerPriority) }
         setLowLatencyWifi(false)
+        setServerKeepAlive(false)
         channel.setMethodCallHandler(null)
     }
 

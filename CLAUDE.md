@@ -17,7 +17,7 @@ Everything runs on the user's devices. The only network calls are the ones the u
 ## Stack and layout
 
 - Flutter 3.47.9 (pinned in CI; Flutter 3.50+ needs Gradle 9.3.1 and the Android project is on Gradle 8.14), Dart 3.13. State: GetX. Storage: Hive. HTTP: Dio + `package:http`.
-- `lib/controllers` (GetX controllers), `lib/services` (inference, cloud, storage, download, server), `lib/views`, `lib/widgets`, `lib/core` (constants, routes, theme, UI kit), `lib/models`.
+- `lib/controllers` (GetX controllers), `lib/services` (inference, cluster, storage, download, server), `lib/views`, `lib/widgets`, `lib/core` (constants, routes, theme, UI kit), `lib/models`.
 - Platform splits use conditional imports (`*_native.dart` / `*_web.dart` / `*_stub.dart`).
 - Native code lives in `local_plugins/llama_flutter_android` (llama.cpp, vendored and lightly patched for the phone cluster). It is large; don't touch it unless the task is about it.
 
@@ -37,12 +37,12 @@ Everything runs on the user's devices. The only network calls are the ones the u
 ## Roadmap (agreed order)
 
 1. Done: cleanup and security, privacy pass (no hidden Google calls), removal of cloud providers, faster chat storage. Still open: the "uncensored" models in the catalogue; splitting huge files (`model_view.dart`, `chat_view.dart`, `model_controller.dart`).
-2. Server: make it solid for other apps (streaming, tool/function calling if the model supports it, keep running in the background, clear connection info and examples).
+2. Server: make it solid for other apps. Done: request queue, per-request sampling, tool calling via `<tool_call>` prompts (`lib/services/server/tool_calling.dart`), JSON mode, background keep-alive (wake/Wi-Fi lock), examples in the Server tab. Still open: llama.cpp grammar for strict JSON/tool output, token usage in responses, a server that survives the app being swiped away.
 3. Cluster: authentication for RPC workers, reliability when a worker drops, clearer setup.
 4. Then: on-device tokens/s benchmark (phone and cluster), context management for long chats.
 
 ## Working conventions
 
-- Commits follow Conventional Commits with a scope, e.g. `feat(cluster): ...`, `fix(cloud): ...`, `chore: ...`.
+- Commits follow Conventional Commits with a scope, e.g. `feat(cluster): ...`, `fix(server): ...`, `chore: ...`.
 - Work on a branch and open a PR against `main`; keep PRs focused.
 - Run `flutter analyze` and `flutter test` before pushing. CI (`.github/workflows/android.yml`) builds every PR; a `vX.Y.Z` tag matching `pubspec.yaml` publishes signed APKs to GitHub Releases (needs the `ANDROID_KEY*` secrets). Tests live in `test/` and use Hive in a temp directory. Nobody has built the iOS/macOS apps since the cleanup: run `pod install` and an Xcode build before an iOS release.

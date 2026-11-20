@@ -222,6 +222,8 @@ class InferenceService extends GetxService {
     String? audioPath,
     int? maxTokens,
     List<String> stopSequences = const [],
+    double? temperature,
+    double? topP,
     void Function(String token)? onToken,
   }) async {
     if (!supportsLocalInference || _engine == null || !isModelLoaded.value) {
@@ -266,7 +268,7 @@ class InferenceService extends GetxService {
     var stopSequenceHit = false;
 
     try {
-      final temperature = _hive.getSetting<double>(
+      final settingTemperature = _hive.getSetting<double>(
             AppConstants.keyTemperature,
             defaultValue: AppConstants.defaultTemperature,
           ) ??
@@ -287,7 +289,8 @@ class InferenceService extends GetxService {
         systemPrompt: systemPrompt ?? AppConstants.systemPrompt,
         modelName: loadedModelName.value,
         maxTokens: effectiveMaxTokens,
-        temperature: temperature,
+        temperature: temperature ?? settingTemperature,
+        topP: topP,
         imagePath: imagePath,
         audioPath: audioPath,
         source: source,

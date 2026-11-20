@@ -116,6 +116,32 @@ class ServerView extends GetView<ServerController> {
               ),
             ),
 
+            // ── Background (Android) ──
+            if (controller.batteryUnrestricted.value != null) ...[
+              const SectionHeader('Background'),
+              AppGroup(children: [
+                const AppRow(
+                  icon: Icons.bolt_outlined,
+                  title: 'Keeps running in the background',
+                  subtitle:
+                      'While the server is on and the model stays loaded, '
+                      'it answers with the screen off or another app open. '
+                      'Closing PrivateLM from recent apps stops it.',
+                ),
+                if (controller.batteryUnrestricted.value == false)
+                  AppRow(
+                    icon: Icons.battery_alert_outlined,
+                    title: 'Battery optimization is on',
+                    subtitle: 'Android may pause the server after a while. '
+                        'Allow PrivateLM to run without limits.',
+                    trailing: PillButton(
+                      label: 'Allow',
+                      onPressed: controller.requestBatteryUnrestricted,
+                    ),
+                  ),
+              ]),
+            ],
+
             // ── Endpoints ──
             if (isRunning) ...[
               const SectionHeader('Endpoints'),
@@ -126,7 +152,23 @@ class ServerView extends GetView<ServerController> {
                     url: controller.localUrl.value == null
                         ? null
                         : controller.openAiBaseUrl),
+                _UrlRow(
+                    label: 'Model',
+                    url: controller.inference.loadedModelName.value),
               ]),
+              const SizedBox(height: 12),
+              AppNotice(
+                allowNetwork
+                    ? 'Other devices on the same Wi-Fi use the base URL above '
+                        'with the API key. Any model name works: the loaded '
+                        'model always answers. One request runs at a time; '
+                        'others wait their turn.'
+                    : 'Apps on this phone use the base URL above. Turn on '
+                        'network access to reach it from your computer. Any '
+                        'model name works: the loaded model always answers.',
+                icon: Icons.info_outline_rounded,
+                color: t.muted,
+              ),
               const SizedBox(height: 12),
               _HealthTest(baseUrl: controller.localUrl.value),
 
@@ -148,8 +190,25 @@ class ServerView extends GetView<ServerController> {
               _CodeBlock(
                 title: 'OpenAI SDK',
                 lang: 'python',
-                code:
-                    'from openai import OpenAI\n\nclient = OpenAI(\n    base_url="${controller.baseUrl}/v1",\n    api_key="${controller.requiresApiKey ? controller.apiKey.value : "not-needed"}"\n)\n\nresponse = client.chat.completions.create(\n    model="${controller.inference.loadedModelName.value}",\n    messages=[{"role": "user", "content": "Hello"}],\n)\nprint(response.choices[0].message.content)',
+                code: _pythonExample(),
+              ),
+              const SizedBox(height: 12),
+              _CodeBlock(
+                title: 'Streaming',
+                lang: 'python',
+                code: _pythonStreamingExample(),
+              ),
+              const SizedBox(height: 12),
+              _CodeBlock(
+                title: 'Tool calling',
+                lang: 'python',
+                code: _pythonToolsExample(),
+              ),
+              const SizedBox(height: 12),
+              _CodeBlock(
+                title: 'OpenAI SDK',
+                lang: 'javascript',
+                code: _javascriptExample(),
               ),
             ],
           ],
@@ -157,6 +216,60 @@ class ServerView extends GetView<ServerController> {
       }),
     );
   }
+
+  String get _pythonClient => 'from openai import OpenAI\n\n'
+      'client = OpenAI(\n'
+      '    base_url="${controller.openAiBaseUrl}",\n'
+      '    api_key="${controller.clientApiKey}",\n'
+      ')\n';
+
+  String _pythonExample() => '$_pythonClient\n'
+      'response = client.chat.completions.create(\n'
+      '    model="local",\n'
+      '    messages=[{"role": "user", "content": "Hello"}],\n'
+      ')\n'
+      'print(response.choices[0].message.content)';
+
+  String _pythonStreamingExample() => '$_pythonClient\n'
+      'stream = client.chat.completions.create(\n'
+      '    model="local",\n'
+      '    messages=[{"role": "user", "content": "Write a haiku"}],\n'
+      '    stream=True,\n'
+      ')\n'
+      'for chunk in stream:\n'
+      '    print(chunk.choices[0].delta.content or "", end="", flush=True)';
+
+  String _pythonToolsExample() => '$_pythonClient\n'
+      'tools = [{\n'
+      '    "type": "function",\n'
+      '    "function": {\n'
+      '        "name": "get_weather",\n'
+      '        "description": "Current weather for a city",\n'
+      '        "parameters": {\n'
+      '            "type": "object",\n'
+      '            "properties": {"city": {"type": "string"}},\n'
+      '            "required": ["city"],\n'
+      '        },\n'
+      '    },\n'
+      '}]\n\n'
+      'response = client.chat.completions.create(\n'
+      '    model="local",\n'
+      '    messages=[{"role": "user", "content": "Weather in Rome?"}],\n'
+      '    tools=tools,\n'
+      ')\n'
+      'print(response.choices[0].message.tool_calls)\n'
+      '# Works best with models trained for tools (Qwen 2.5/3, Hermes, Llama 3.1+).';
+
+  String _javascriptExample() => 'import OpenAI from "openai";\n\n'
+      'const client = new OpenAI({\n'
+      '  baseURL: "${controller.openAiBaseUrl}",\n'
+      '  apiKey: "${controller.clientApiKey}",\n'
+      '});\n\n'
+      'const response = await client.chat.completions.create({\n'
+      '  model: "local",\n'
+      '  messages: [{ role: "user", content: "Hello" }],\n'
+      '});\n'
+      'console.log(response.choices[0].message.content);';
 
   String _authHeader() {
     if (controller.requiresApiKey && controller.apiKey.value.isNotEmpty) {

@@ -50,6 +50,7 @@ class InferenceEngine {
     required String modelName,
     required int maxTokens,
     required double temperature,
+    double? topP,
     String? imagePath,
     String? audioPath,
     String source = 'chat',
