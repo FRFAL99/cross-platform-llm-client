@@ -1,17 +1,24 @@
-// PrivateLM patch: pairing-code authentication for the phone cluster.
+// PrivateLM patch: pairing-code authentication and encryption for the
+// phone cluster.
 //
-// ggml's RPC server has no authentication: anyone on the network could load
-// tensors into a worker. A worker now holds a pairing code and, before the
-// RPC HELLO, runs a mutual challenge-response with HMAC-SHA256 so that only
-// a master that knows the code can use it (and the master knows it reached
-// the phone it paired with). The code itself never crosses the network.
+// ggml's RPC server has no authentication and sends everything in the
+// clear. A worker now holds a pairing code. Before the RPC HELLO, worker
+// and master exchange ephemeral X25519 keys and prove to each other, with
+// HMAC-SHA256 over the whole exchange, that they know the code; the code
+// itself never crosses the network. Both sides then derive one key per
+// direction from the X25519 secret, and every byte after the handshake
+// travels in ChaCha20-Poly1305 records (see transport.cpp).
 //
-//   worker -> master : "PLM1" | nonce_w (32)
-//   master -> worker : nonce_m (32) | HMAC(code, "PrivateLM master" | nonce_w | nonce_m)
-//   worker -> master : status (1: ok, 0: wrong code) | HMAC(code, "PrivateLM worker" | nonce_m | nonce_w)
+//   worker -> master : "PLM2" | nonce_w (32) | pub_w (32)
+//   master -> worker : nonce_m (32) | pub_m (32) | HMAC(code, "PrivateLM master" | T)
+//   worker -> master : status (1: ok, 0: wrong code) | HMAC(code, "PrivateLM worker" | T)
+//   T = nonce_w | pub_w | nonce_m | pub_m
+//   key(dir) = HMAC(X25519(secret, peer pub), "PrivateLM key " dir | T), dir = m2w or w2m
 //
-// Traffic after the handshake is not encrypted: the cluster is still meant
-// for a home network.
+// The MACs bind the ephemeral keys, so only someone who knows the code can
+// sit in the middle; someone who only listens learns nothing, even if they
+// later guess the code. Earlier apps speak "PLM1" (no encryption) and are
+// refused, so both phones must run this version.
 #pragma once
 
 #include <algorithm>
@@ -19,12 +26,16 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <initializer_list>
 #include <random>
 #include <string>
 
+#include "privatelm-crypto.h"
+
 namespace privatelm_auth {
 
-static constexpr uint8_t kMagic[4] = {'P', 'L', 'M', '1'};
+static constexpr uint8_t kMagic[4] = {'P', 'L', 'M', '2'};
+static constexpr size_t kKeySize = 32;
 static constexpr size_t kNonceSize = 32;
 static constexpr size_t kMacSize = 32;
 
@@ -105,35 +116,39 @@ struct sha256 {
 
 // ── HMAC-SHA256 (RFC 2104) ──────────────────────────────────────────────
 
-inline digest hmac(const std::string & key, const char * label,
-                   const uint8_t * a, const uint8_t * b, size_t n) {
+struct span { const void * p; size_t n; };
+
+inline digest hmac(const uint8_t * key, size_t key_len, std::initializer_list<span> parts) {
     uint8_t k[64] = {};
-    if (key.size() > sizeof(k)) {
+    if (key_len > sizeof(k)) {
         sha256 kh;
-        kh.update(key.data(), key.size());
+        kh.update(key, key_len);
         const digest d = kh.finish();
         std::memcpy(k, d.data(), d.size());
     } else {
-        std::memcpy(k, key.data(), key.size());
+        std::memcpy(k, key, key_len);
     }
     uint8_t ipad[64], opad[64];
     for (int i = 0; i < 64; i++) { ipad[i] = k[i] ^ 0x36; opad[i] = k[i] ^ 0x5c; }
     sha256 inner;
     inner.update(ipad, sizeof(ipad));
-    inner.update(label, std::strlen(label));
-    inner.update(a, n);
-    inner.update(b, n);
+    for (const auto & part : parts) inner.update(part.p, part.n);
     const digest ih = inner.finish();
     sha256 outer;
     outer.update(opad, sizeof(opad));
     outer.update(ih.data(), ih.size());
+    privatelm_crypto::wipe(k, sizeof(k));
+    privatelm_crypto::wipe(ipad, sizeof(ipad));
+    privatelm_crypto::wipe(opad, sizeof(opad));
     return outer.finish();
 }
 
+inline digest hmac(const std::string & key, std::initializer_list<span> parts) {
+    return hmac((const uint8_t *)key.data(), key.size(), parts);
+}
+
 inline bool equal(const uint8_t * a, const uint8_t * b, size_t n) {
-    uint8_t diff = 0;
-    for (size_t i = 0; i < n; i++) diff |= a[i] ^ b[i];
-    return diff == 0;
+    return privatelm_crypto::equal(a, b, n);
 }
 
 inline void random_bytes(uint8_t * out, size_t n) {
@@ -146,57 +161,106 @@ inline void random_bytes(uint8_t * out, size_t n) {
 
 static const char kMasterLabel[] = "PrivateLM master";
 static const char kWorkerLabel[] = "PrivateLM worker";
+static const char kKeyM2W[] = "PrivateLM key m2w";
+static const char kKeyW2M[] = "PrivateLM key w2m";
+
+/// Keys for the encrypted channel after a successful handshake.
+struct session_keys {
+    uint8_t send[kKeySize];
+    uint8_t recv[kKeySize];
+};
 
 // ── Handshake over any byte stream ──────────────────────────────────────
 
 enum result { OK = 0, IO_ERROR = 1, WRONG_CODE = 2, NOT_PRIVATELM = 3 };
 
-/// Worker side. `send`/`recv` move exactly n bytes and return false on error.
+// Transcript T = nonce_w | pub_w | nonce_m | pub_m.
+static constexpr size_t kHalf = kNonceSize + kKeySize;
+using transcript = std::array<uint8_t, 2 * kHalf>;
+
+inline digest mac(const std::string & code, const char * label, const transcript & t) {
+    return hmac(code, {{label, std::strlen(label)}, {t.data(), t.size()}});
+}
+
+/// Derives both directions' keys; false if the peer's key is unusable.
+inline bool derive(const uint8_t secret[kKeySize], const uint8_t peer_pub[kKeySize], const transcript & t,
+                   bool is_master, session_keys * keys) {
+    uint8_t shared[kKeySize];
+    if (!privatelm_crypto::x25519(shared, secret, peer_pub)) return false;
+    const digest m2w = hmac(shared, sizeof(shared), {{kKeyM2W, sizeof(kKeyM2W) - 1}, {t.data(), t.size()}});
+    const digest w2m = hmac(shared, sizeof(shared), {{kKeyW2M, sizeof(kKeyW2M) - 1}, {t.data(), t.size()}});
+    privatelm_crypto::wipe(shared, sizeof(shared));
+    std::memcpy(keys->send, (is_master ? m2w : w2m).data(), kKeySize);
+    std::memcpy(keys->recv, (is_master ? w2m : m2w).data(), kKeySize);
+    return true;
+}
+
+/// Worker side. `send`/`recv` move exactly n bytes and return false on
+/// error. On OK, [keys] holds the session keys.
 template <typename Send, typename Recv, typename Flush>
-result serve(const std::string & code, Send send, Recv recv, Flush flush) {
-    uint8_t hello[sizeof(kMagic) + kNonceSize];
+result serve(const std::string & code, Send send, Recv recv, Flush flush, session_keys * keys) {
+    transcript t;
+    uint8_t secret[kKeySize];
+    random_bytes(secret, sizeof(secret));
+    random_bytes(t.data(), kNonceSize);
+    privatelm_crypto::x25519_public(t.data() + kNonceSize, secret);
+
+    uint8_t hello[sizeof(kMagic) + kHalf];
     std::memcpy(hello, kMagic, sizeof(kMagic));
-    uint8_t * nonce_w = hello + sizeof(kMagic);
-    random_bytes(nonce_w, kNonceSize);
+    std::memcpy(hello + sizeof(kMagic), t.data(), kHalf);
     if (!send(hello, sizeof(hello)) || !flush()) return IO_ERROR;
 
-    uint8_t reply[kNonceSize + kMacSize];
+    uint8_t reply[kHalf + kMacSize];
     if (!recv(reply, sizeof(reply))) return IO_ERROR;
-    const uint8_t * nonce_m = reply;
-    const digest expected = hmac(code, kMasterLabel, nonce_w, nonce_m, kNonceSize);
-    const bool ok = equal(expected.data(), reply + kNonceSize, kMacSize);
+    std::memcpy(t.data() + kHalf, reply, kHalf);
+    const digest expected = mac(code, kMasterLabel, t);
+    bool ok = equal(expected.data(), reply + kHalf, kMacSize);
+    if (ok) ok = derive(secret, t.data() + kHalf + kNonceSize, t, false, keys);
+    privatelm_crypto::wipe(secret, sizeof(secret));
 
     uint8_t answer[1 + kMacSize] = {};
     answer[0] = ok ? 1 : 0;
     if (ok) {
-        const digest proof = hmac(code, kWorkerLabel, nonce_m, nonce_w, kNonceSize);
+        const digest proof = mac(code, kWorkerLabel, t);
         std::memcpy(answer + 1, proof.data(), kMacSize);
     }
     if (!send(answer, sizeof(answer)) || !flush()) return IO_ERROR;
     return ok ? OK : WRONG_CODE;
 }
 
-/// Master side.
+/// Master side. On OK, [keys] holds the session keys.
 template <typename Send, typename Recv, typename Flush>
-result connect(const std::string & code, Send send, Recv recv, Flush flush) {
-    uint8_t hello[sizeof(kMagic) + kNonceSize];
-    if (!recv(hello, sizeof(hello))) return IO_ERROR;
+result connect(const std::string & code, Send send, Recv recv, Flush flush, session_keys * keys) {
+    uint8_t hello[sizeof(kMagic) + kHalf];
+    if (!recv(hello, sizeof(kMagic))) return IO_ERROR;
     if (std::memcmp(hello, kMagic, sizeof(kMagic)) != 0) return NOT_PRIVATELM;
-    const uint8_t * nonce_w = hello + sizeof(kMagic);
+    if (!recv(hello + sizeof(kMagic), kHalf)) return IO_ERROR;
 
-    uint8_t reply[kNonceSize + kMacSize];
-    uint8_t * nonce_m = reply;
-    random_bytes(nonce_m, kNonceSize);
-    const digest mac = hmac(code, kMasterLabel, nonce_w, nonce_m, kNonceSize);
-    std::memcpy(reply + kNonceSize, mac.data(), kMacSize);
-    if (!send(reply, sizeof(reply)) || !flush()) return IO_ERROR;
+    transcript t;
+    std::memcpy(t.data(), hello + sizeof(kMagic), kHalf);
+    uint8_t secret[kKeySize];
+    random_bytes(secret, sizeof(secret));
+    random_bytes(t.data() + kHalf, kNonceSize);
+    privatelm_crypto::x25519_public(t.data() + kHalf + kNonceSize, secret);
+
+    uint8_t reply[kHalf + kMacSize];
+    std::memcpy(reply, t.data() + kHalf, kHalf);
+    const digest m = mac(code, kMasterLabel, t);
+    std::memcpy(reply + kHalf, m.data(), kMacSize);
+    if (!send(reply, sizeof(reply)) || !flush()) {
+        privatelm_crypto::wipe(secret, sizeof(secret));
+        return IO_ERROR;
+    }
 
     uint8_t answer[1 + kMacSize];
-    if (!recv(answer, sizeof(answer))) return IO_ERROR;
-    if (answer[0] != 1) return WRONG_CODE;
-    const digest expected = hmac(code, kWorkerLabel, nonce_m, nonce_w, kNonceSize);
+    const bool got = recv(answer, sizeof(answer));
+    bool ok = got && answer[0] == 1;
     // A worker that accepts without proving it knows the code is an impostor.
-    return equal(expected.data(), answer + 1, kMacSize) ? OK : WRONG_CODE;
+    if (ok) ok = equal(mac(code, kWorkerLabel, t).data(), answer + 1, kMacSize);
+    if (ok) ok = derive(secret, t.data() + kNonceSize, t, true, keys);
+    privatelm_crypto::wipe(secret, sizeof(secret));
+    if (!got) return IO_ERROR;
+    return ok ? OK : WRONG_CODE;
 }
 
 }  // namespace privatelm_auth

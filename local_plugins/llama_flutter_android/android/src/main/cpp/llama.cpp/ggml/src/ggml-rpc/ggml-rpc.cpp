@@ -581,19 +581,23 @@ void rpc_dispatcher::start(const std::string & endpoint) {
         GGML_ABORT("Failed to connect to %s\n", endpoint.c_str());
     }
     this->endpoint = endpoint;
-    // PrivateLM patch: prove we know the worker's pairing code. The app
-    // checks the code first (ggml_backend_rpc_check_server), so a failure
-    // here means the worker changed between the check and the load.
+    // PrivateLM patch: prove we know the worker's pairing code, agree on
+    // session keys and encrypt everything after. The app checks the code
+    // first (ggml_backend_rpc_check_server), so a failure here means the
+    // worker changed between the check and the load.
     const std::string code = client_code_for(endpoint);
     if (!code.empty()) {
         auto s = sock;
+        privatelm_auth::session_keys keys;
         const auto res = privatelm_auth::connect(code,
             [s](const void * d, size_t n) { return s->send_data(d, n); },
             [s](void * d, size_t n) { return s->recv_data(d, n); },
-            [s]() { return s->flush(); });
+            [s]() { return s->flush(); }, &keys);
         if (res != privatelm_auth::OK) {
             GGML_ABORT("Pairing with %s failed (%d)\n", endpoint.c_str(), (int)res);
         }
+        sock->enable_encryption(keys.send, keys.recv);
+        privatelm_crypto::wipe(&keys, sizeof(keys));
     }
     if (!negotiate_hello(sock)) {
         GGML_ABORT("RPC handshake failed for %s\n", endpoint.c_str());
@@ -1877,10 +1881,11 @@ static void rpc_serve_client(const std::vector<ggml_backend_t> & backends, const
     if (!code.empty()) {
         // A client that connects and says nothing must not hold the worker.
         sock->set_recv_timeout(10000);
+        privatelm_auth::session_keys keys;
         const auto res = privatelm_auth::serve(code,
             [&sock](const void * d, size_t n) { return sock->send_data(d, n); },
             [&sock](void * d, size_t n) { return sock->recv_data(d, n); },
-            [&sock]() { return sock->flush(); });
+            [&sock]() { return sock->flush(); }, &keys);
         if (res == privatelm_auth::WRONG_CODE) {
             GGML_LOG_WARN("RPC client rejected: wrong pairing code\n");
             return;
@@ -1888,6 +1893,8 @@ static void rpc_serve_client(const std::vector<ggml_backend_t> & backends, const
         if (res != privatelm_auth::OK) {
             return;  // a reachability probe, or the client left
         }
+        sock->enable_encryption(keys.send, keys.recv);
+        privatelm_crypto::wipe(&keys, sizeof(keys));
         sock->set_recv_timeout(0);
     }
     rpc_server server(backends, cache_dir);
@@ -2442,8 +2449,10 @@ static int ggml_backend_rpc_check_server(const char * endpoint, const char * cod
         }
         return true;
     };
+    privatelm_auth::session_keys keys;  // a probe: closed right after
     const auto res = privatelm_auth::connect(code ? std::string(code) : std::string(),
-                                             send_all, recv_all, [] { return true; });
+                                             send_all, recv_all, [] { return true; }, &keys);
+    privatelm_crypto::wipe(&keys, sizeof(keys));
     switch (res) {
         case privatelm_auth::OK:            return 0;
         case privatelm_auth::WRONG_CODE:    return 2;

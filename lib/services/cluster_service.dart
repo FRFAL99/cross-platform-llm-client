@@ -322,8 +322,8 @@ class ClusterService extends GetxService {
         ClusterCheck.wrongCode =>
           'Wrong pairing code for $endpoint. Check the code shown on the worker phone.',
         ClusterCheck.oldVersion =>
-          '$endpoint runs an older PrivateLM (or isn\'t a PrivateLM worker). '
-              'Update the app on that phone.',
+          '$endpoint runs a different PrivateLM version (or isn\'t a '
+              'PrivateLM worker). Update the app on both phones.',
         ClusterCheck.busy => '$endpoint is busy with another master phone.',
         ClusterCheck.unsupported => 'This build has no phone cluster support.',
         ClusterCheck.unreachable => 'Can\'t reach $endpoint. Check that the phone is a '
