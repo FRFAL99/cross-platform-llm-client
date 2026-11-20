@@ -13,7 +13,7 @@ import 'inference_android.dart' if (dart.library.html) 'inference_stub.dart'
 
 /// Cross-platform inference service.
 /// - Android / iOS: uses llama_flutter_android for local GGUF models
-/// - Web: cloud-only mode (local inference coming soon)
+/// - Web: no local inference
 class InferenceService extends GetxService {
   final HiveService _hive = Get.find<HiveService>();
 
@@ -62,7 +62,7 @@ class InferenceService extends GetxService {
     String? mmprojPath,
   }) async {
     if (!supportsLocalInference) {
-      return 'ERROR: Local inference is not available on this platform. Use Cloud mode.';
+      return 'ERROR: Local inference is not available on this platform.';
     }
     if (isLoadingModel.value) return 'ERROR: Model is already loading.';
 
@@ -345,8 +345,7 @@ class InferenceService extends GetxService {
               'The Q4_K_M quantization format has a known bug on Tensor SoC that produces empty responses.\n\n'
               'Try one of these fixes:\n'
               '1. Download a Q4_0 or Q5_K_M version of the same model\n'
-              '2. Use a different model (Qwen, Phi, or Llama-3)\n'
-              '3. Switch to Cloud mode in Settings';
+              '2. Use a different model (Qwen, Phi, or Llama-3)';
         }
       }
 
@@ -456,6 +455,4 @@ class InferenceService extends GetxService {
     final normalized = progress > 1 ? progress / 100 : progress;
     return normalized.clamp(0.0, 1.0).toDouble();
   }
-
-
 }

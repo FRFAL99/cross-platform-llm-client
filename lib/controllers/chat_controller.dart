@@ -12,14 +12,13 @@ import 'package:path_provider/path_provider.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:uuid/uuid.dart';
 import '../controllers/settings_controller.dart';
-import '../core/constants.dart';
 import '../core/ui.dart';
 import '../models/chat_message.dart';
 import '../models/chat_session.dart';
 import '../services/hive_service.dart';
 import '../services/inference_service.dart';
-import '../services/cloud_service.dart';
 import '../services/app_log_service.dart';
+import '../services/chat_image_store.dart';
 import '../services/document_extractor_service.dart';
 import '../utils/thought_parser.dart';
 
@@ -179,7 +178,7 @@ class ChatController extends GetxController {
     final session = ChatSession(id: id, title: 'New Chat');
     _hive.saveSession(id, session.toMap());
     sessions.insert(0, session);
-    openChat(id);
+    openChat(id, isNew: true);
   }
 
   void _resetInferenceContext() {
@@ -189,17 +188,30 @@ class ChatController extends GetxController {
     }
   }
 
-  void openChat(String sessionId) {
+  void openChat(String sessionId, {bool isNew = false}) {
     stopGenerating();
     currentSessionId.value = sessionId;
-    final raw = _hive.getMessagesForChat(sessionId);
-    messages.value = raw.map((m) => ChatMessage.fromMap(m)).toList()
-      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    messages.clear();
+    if (!isNew) unawaited(_loadMessages(sessionId));
     final inference = Get.find<InferenceService>();
     if (inference.isModelLoaded.value) {
       inference.refreshContextInfo();
     }
     _resetInferenceContext();
+    _scrollToBottom(force: true);
+  }
+
+  /// Reads the chat's messages from storage. Messages added meanwhile (a
+  /// prompt sent while loading) are kept.
+  Future<void> _loadMessages(String sessionId) async {
+    final raw = await _hive.getMessagesForChat(sessionId);
+    if (currentSessionId.value != sessionId) return; // Opened another chat.
+    final loaded = raw.map((m) => ChatMessage.fromMap(m)).toList();
+    final loadedIds = loaded.map((m) => m.id).toSet();
+    messages.value = [
+      ...loaded,
+      ...messages.where((m) => !loadedIds.contains(m.id)),
+    ]..sort((a, b) => a.timestamp.compareTo(b.timestamp));
     _scrollToBottom(force: true);
   }
 
@@ -233,7 +245,6 @@ class ChatController extends GetxController {
       selectedFileType.value = 'image';
       selectedFileSize.value = await file.length();
       selectedFileContent.value = null;
-      _checkVisionSupport();
     }
   }
 
@@ -249,52 +260,6 @@ class ChatController extends GetxController {
     }
     if (selectedFileType.value == 'image') {
       clearFile();
-    }
-  }
-
-  void _checkVisionSupport() {
-    final s = Get.find<SettingsController>();
-    if (s.inferenceMode.value != 'cloud') return;
-
-    final provider = s.cloudProvider.value;
-    String modelName = '';
-    switch (provider) {
-      case 'anthropic':
-        modelName = s.anthropicModel.value;
-        break;
-      case 'google':
-        modelName = s.googleModel.value;
-        break;
-      case 'openrouter':
-        modelName = s.openRouterModel.value;
-        break;
-      case 'custom':
-        modelName = s.customCloudModel.value;
-        break;
-      default:
-        modelName = s.openaiModel.value;
-        break;
-    }
-
-    final model = modelName.toLowerCase();
-
-    // Known vision keywords in cloud model names
-    final isVision = model.contains('vision') ||
-        model.contains('-vl') ||
-        model.contains('gpt-4o') ||
-        model.contains('claude-3') ||
-        model.contains('gemini') ||
-        model.contains('pixtral') ||
-        model.contains('llava') ||
-        model.contains('omni');
-
-    if (!isVision) {
-      showToast(
-        'Warning: Text-Only Model',
-        'The selected model ($modelName) might not support images. If you get an error, switch to a vision model (like Gemini, GPT-4o, or Claude 3).',
-        tone: ToastTone.warning,
-        duration: const Duration(seconds: 6),
-      );
     }
   }
 
@@ -381,7 +346,6 @@ class ChatController extends GetxController {
         selectedFileContent.value = null;
         selectedImagePath.value = optimizedPath;
         selectedImageBase64.value = null;
-        _checkVisionSupport();
         return;
       }
 
@@ -426,19 +390,16 @@ class ChatController extends GetxController {
     }
   }
 
-  /// Trims extracted document text so it fits the model's context window.
-  /// Cloud models get up to 12k chars; local models get roughly half their
-  /// context (~4 chars per token), leaving room for history and the reply.
+  /// Trims extracted document text so it fits the model's context window:
+  /// roughly half the context (~4 chars per token), leaving room for history
+  /// and the reply.
   String _fitToContext(String content) {
-    var limit = 12000;
     final s = Get.find<SettingsController>();
-    if (s.inferenceMode.value == 'local') {
-      final inf = Get.find<InferenceService>();
-      final ctx = inf.contextTokensTotal.value > 0
-          ? inf.contextTokensTotal.value
-          : s.contextSize.value;
-      if (ctx > 0) limit = (ctx * 2).clamp(2000, 12000).toInt();
-    }
+    final inf = Get.find<InferenceService>();
+    final ctx = inf.contextTokensTotal.value > 0
+        ? inf.contextTokensTotal.value
+        : s.contextSize.value;
+    final limit = ctx > 0 ? (ctx * 2).clamp(2000, 12000).toInt() : 12000;
     if (content.length <= limit) return content;
     return '${content.substring(0, limit)}\n\n[File truncated to fit the model\'s context window]';
   }
@@ -522,13 +483,28 @@ class ChatController extends GetxController {
       } catch (_) {}
     }
 
+    // Keep the image with the chat as a file (the picked one can be a temp
+    // file); only web stores it inside the message.
+    final userMsgId = _uuid.v4();
+    String? imageFile;
+    if (imgBase64 != null && ChatImageStore.isSupported) {
+      try {
+        imageFile =
+            await ChatImageStore.save(userMsgId, base64Decode(imgBase64));
+      } catch (e) {
+        Get.find<AppLogService>()
+            .warning('Could not save the chat image', details: e);
+      }
+    }
+
     // Add user message
     final userMsg = ChatMessage(
-      id: _uuid.v4(),
+      id: userMsgId,
       chatId: currentSessionId.value,
       role: 'user',
       content: effectiveText,
-      imageBase64: imgBase64, // Always save the encoded base64 string
+      imageBase64: imageFile == null ? imgBase64 : null,
+      imageFile: imageFile,
       imagePath: imagePath,
       fileName: fileName,
       fileContent: fileContent,
@@ -588,12 +564,6 @@ class ChatController extends GetxController {
         }
       }
 
-      final inferenceMode = _hive.getSetting(
-            AppConstants.keyInferenceMode,
-            defaultValue: 'local',
-          ) ??
-          'local';
-
       String rawResponse;
 
       // Build conversation history
@@ -607,41 +577,23 @@ class ChatController extends GetxController {
               })
           .toList();
 
-      if (inferenceMode == 'local') {
-        final inference = Get.find<InferenceService>();
-        rawResponse = await inference.generate(
-          prompt: effectiveText,
-          systemPrompt: _effectiveSystemPrompt,
-          conversationHistory: history,
-          source: 'chat',
-          imagePath: imagePath,
-          audioPath: fileType == 'audio' ? filePath : null,
-          stopSequences: Get.find<SettingsController>().stopSequences.toList(),
-          onToken: (token) {
-            // Ignore tokens from a generation the user already stopped.
-            if (generationId != _generationSerial) return;
-            streamingResponse.value += token;
-            trackThoughtTiming();
-            _scrollToBottom();
-          },
-        );
-      } else {
-        final cloud = Get.find<CloudService>();
-        final apiMessages = [
-          {'role': 'system', 'content': _effectiveSystemPrompt},
-          ...history,
-        ];
-        rawResponse = await cloud.sendMessage(
-          messages: apiMessages,
-          imageBase64: imgBase64, // already encoded before clearImage()
-          onToken: (token) {
-            if (generationId != _generationSerial) return;
-            streamingResponse.value += token;
-            trackThoughtTiming();
-            _scrollToBottom();
-          },
-        );
-      }
+      final inference = Get.find<InferenceService>();
+      rawResponse = await inference.generate(
+        prompt: effectiveText,
+        systemPrompt: _effectiveSystemPrompt,
+        conversationHistory: history,
+        source: 'chat',
+        imagePath: imagePath,
+        audioPath: fileType == 'audio' ? filePath : null,
+        stopSequences: Get.find<SettingsController>().stopSequences.toList(),
+        onToken: (token) {
+          // Ignore tokens from a generation the user already stopped.
+          if (generationId != _generationSerial) return;
+          streamingResponse.value += token;
+          trackThoughtTiming();
+          _scrollToBottom();
+        },
+      );
 
       if (thoughtStartedAt != null && thoughtDurationSeconds == null) {
         thoughtDurationSeconds =
@@ -651,9 +603,7 @@ class ChatController extends GetxController {
       if (generationId != _generationSerial) return;
 
       // Stop streaming UI
-      final tps = inferenceMode == 'local'
-          ? Get.find<InferenceService>().tokensPerSecond.value
-          : null;
+      final tps = Get.find<InferenceService>().tokensPerSecond.value;
       isStreaming.value = false;
       streamingAttachmentType.value = null;
       streamingResponse.value = '';
@@ -717,7 +667,6 @@ class ChatController extends GetxController {
     streamingAttachmentType.value = null;
     streamingResponse.value = '';
     unawaited(Get.find<InferenceService>().stopGeneration());
-    Get.find<CloudService>().cancel();
   }
 
   void _saveAssistantMessage({
@@ -794,11 +743,8 @@ class ChatController extends GetxController {
   String get _effectiveSystemPrompt {
     final settings = Get.find<SettingsController>();
     final inference = Get.find<InferenceService>();
-    final modelName = settings.inferenceMode.value == 'local'
-        ? inference.loadedModelName.value
-        : settings.selectedCloudModelName;
     return settings.effectiveSystemPromptForModel(
-      modelName,
+      inference.loadedModelName.value,
     );
   }
 

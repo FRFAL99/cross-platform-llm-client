@@ -3,7 +3,6 @@ import 'package:get/get.dart';
 import '../controllers/chat_controller.dart';
 import '../controllers/home_controller.dart';
 import '../controllers/model_controller.dart';
-import '../controllers/settings_controller.dart';
 import '../services/cluster_service.dart';
 import '../services/inference_service.dart';
 import '../core/haptics.dart';
@@ -42,11 +41,8 @@ class HomeEmptyState extends StatelessWidget {
                 const Spacer(),
                 if (!typing)
                   Obx(() {
-                    final settings = Get.find<SettingsController>();
                     final models = Get.find<ModelController>();
-                    final needsModel =
-                        settings.inferenceMode.value == 'local' &&
-                            models.downloadedCount == 0;
+                    final needsModel = models.downloadedCount == 0;
                     return needsModel ? _GettingStarted(t: t) : _Starters(t: t);
                   }),
               ],
@@ -108,7 +104,8 @@ class _HomeTokens {
     );
   }
 
-  TextStyle get sectionLabel => TextStyle(fontFamily: 'Inter',
+  TextStyle get sectionLabel => TextStyle(
+      fontFamily: 'Inter',
       fontSize: 13,
       fontWeight: FontWeight.w600,
       color: muted,
@@ -191,7 +188,8 @@ class _Greeting extends StatelessWidget {
       Text(
         "$_salutation\nwhat's on your mind?",
         textAlign: TextAlign.center,
-        style: TextStyle(fontFamily: 'Inter',
+        style: TextStyle(
+          fontFamily: 'Inter',
           fontSize: compact ? 24 : 28,
           height: 1.25,
           fontWeight: FontWeight.w400,
@@ -203,30 +201,12 @@ class _Greeting extends StatelessWidget {
   }
 }
 
-String providerLabel(SettingsController s) {
-  switch (s.cloudProvider.value) {
-    case 'openai':
-      return 'OpenAI';
-    case 'anthropic':
-      return 'Anthropic';
-    case 'google':
-      return 'Google';
-    case 'openrouter':
-      return 'OpenRouter';
-    case 'custom':
-      final n = s.customCloudName.value.trim();
-      return n.isEmpty ? 'a custom endpoint' : n;
-    default:
-      return 'the cloud';
-  }
-}
-
-String _prettyModel(String name) => name.replaceAll(
-    RegExp(r'\.(gguf|bin)$', caseSensitive: false), '');
+String _prettyModel(String name) =>
+    name.replaceAll(RegExp(r'\.(gguf|bin)$', caseSensitive: false), '');
 
 // ── Model card ──────────────────────────────────────────────────────────
 
-enum _ModelState { noModels, idle, loading, readyText, cloud }
+enum _ModelState { noModels, idle, loading, readyText }
 
 class _ModelCard extends StatelessWidget {
   final _HomeTokens t;
@@ -240,13 +220,10 @@ class _ModelCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Obx(() {
-      final settings = Get.find<SettingsController>();
       final models = Get.find<ModelController>();
       final inf = Get.find<InferenceService>();
       final _ModelState state;
-      if (settings.inferenceMode.value != 'local') {
-        state = _ModelState.cloud;
-      } else if (inf.isLoadingModel.value) {
+      if (inf.isLoadingModel.value) {
         state = _ModelState.loading;
       } else if (inf.isModelLoaded.value) {
         state = _ModelState.readyText;
@@ -263,13 +240,6 @@ class _ModelCard extends StatelessWidget {
       Widget? action;
 
       switch (state) {
-        case _ModelState.cloud:
-          final m = settings.selectedCloudModelName;
-          icon = Icons.cloud_outlined;
-          title = m.isEmpty ? 'No model selected' : m;
-          meta = providerLabel(settings);
-          dot = t.accent;
-          action = _ActionChip(t: t, label: 'Change', onTap: _openModels);
         case _ModelState.loading:
           icon = Icons.memory_rounded;
           title = _prettyModel(inf.loadedModelName.value.isNotEmpty
@@ -283,9 +253,9 @@ class _ModelCard extends StatelessWidget {
           meta = [
             'Ready',
             Get.isRegistered<ClusterService>()
-              ? Get.find<ClusterService>().splitSummary ??
-                  (inf.isGpuAccelerated.value ? 'GPU' : 'CPU')
-              : (inf.isGpuAccelerated.value ? 'GPU' : 'CPU'),
+                ? Get.find<ClusterService>().splitSummary ??
+                    (inf.isGpuAccelerated.value ? 'GPU' : 'CPU')
+                : (inf.isGpuAccelerated.value ? 'GPU' : 'CPU'),
             'GGUF',
           ].join(' · ');
           dot = t.green;
@@ -344,7 +314,8 @@ class _ModelCard extends StatelessWidget {
                     Text(title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontFamily: 'Inter',
+                        style: TextStyle(
+                            fontFamily: 'Inter',
                             fontSize: 15,
                             fontWeight: FontWeight.w600,
                             letterSpacing: -0.2,
@@ -361,7 +332,8 @@ class _ModelCard extends StatelessWidget {
                         child: Text(meta,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(fontFamily: 'Inter',
+                            style: TextStyle(
+                                fontFamily: 'Inter',
                                 fontSize: 12.5,
                                 color: t.muted,
                                 fontFeatures: const [
@@ -419,7 +391,8 @@ class _ActionChip extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
           child: Text(label,
-              style: TextStyle(fontFamily: 'Inter',
+              style: TextStyle(
+                  fontFamily: 'Inter',
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
                   color: primary ? Colors.white : t.text)),
@@ -473,9 +446,7 @@ class _Starters extends StatelessWidget {
   Widget build(BuildContext context) {
     return Obx(() {
       final inf = Get.find<InferenceService>();
-      final isLocal =
-          Get.find<SettingsController>().inferenceMode.value == 'local';
-      final ready = !isLocal || inf.isModelLoaded.value;
+      final ready = inf.isModelLoaded.value;
       const items = _textStarters;
 
       return Column(crossAxisAlignment: CrossAxisAlignment.center, children: [
@@ -499,7 +470,8 @@ class _Starters extends StatelessWidget {
                       child: Text(s.label,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontFamily: 'Inter',
+                          style: TextStyle(
+                              fontFamily: 'Inter',
                               fontSize: 15,
                               letterSpacing: -0.15,
                               color: t.text.withValues(alpha: 0.9))),
@@ -543,7 +515,8 @@ class _GettingStarted extends StatelessWidget {
                 border: Border.all(color: t.faint, width: 1),
               ),
               child: Text('${i + 1}',
-                  style: TextStyle(fontFamily: 'Inter',
+                  style: TextStyle(
+                      fontFamily: 'Inter',
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                       color: t.muted)),
@@ -555,14 +528,18 @@ class _GettingStarted extends StatelessWidget {
                   children: [
                     const SizedBox(height: 2),
                     Text(steps[i].$1,
-                        style: TextStyle(fontFamily: 'Inter',
+                        style: TextStyle(
+                            fontFamily: 'Inter',
                             fontSize: 15,
                             fontWeight: FontWeight.w600,
                             color: t.text)),
                     const SizedBox(height: 2),
                     Text(steps[i].$2,
-                        style: TextStyle(fontFamily: 'Inter',
-                            fontSize: 13.5, height: 1.35, color: t.muted)),
+                        style: TextStyle(
+                            fontFamily: 'Inter',
+                            fontSize: 13.5,
+                            height: 1.35,
+                            color: t.muted)),
                   ]),
             ),
           ]),

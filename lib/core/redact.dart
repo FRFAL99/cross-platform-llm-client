@@ -1,5 +1,5 @@
 /// Masks API keys and tokens in free-form text before it is logged, shown in
-/// the log viewer, copied, or uploaded to crash reporting.
+/// the log viewer, or copied.
 library;
 
 // Characters that end a credential value: whitespace, quotes, separators.
@@ -19,7 +19,8 @@ final List<(RegExp, String Function(Match))> _rules = [
   ),
   // Header-style credentials: x-api-key: ..., "x-goog-api-key": "..."
   (
-    RegExp('((?:x-goog-api-key|x-api-key)["\']?\\s*[:=]\\s*["\']?)[^$_valueEnd]+',
+    RegExp(
+        '((?:x-goog-api-key|x-api-key)["\']?\\s*[:=]\\s*["\']?)[^$_valueEnd]+',
         caseSensitive: false),
     (m) => '${m[1]}[REDACTED]',
   ),
