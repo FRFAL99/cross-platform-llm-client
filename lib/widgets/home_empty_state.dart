@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../controllers/chat_controller.dart';
 import '../controllers/home_controller.dart';
 import '../controllers/model_controller.dart';
@@ -109,7 +108,7 @@ class _HomeTokens {
     );
   }
 
-  TextStyle get sectionLabel => GoogleFonts.inter(
+  TextStyle get sectionLabel => TextStyle(fontFamily: 'Inter',
       fontSize: 13,
       fontWeight: FontWeight.w600,
       color: muted,
@@ -192,7 +191,7 @@ class _Greeting extends StatelessWidget {
       Text(
         "$_salutation\nwhat's on your mind?",
         textAlign: TextAlign.center,
-        style: GoogleFonts.inter(
+        style: TextStyle(fontFamily: 'Inter',
           fontSize: compact ? 24 : 28,
           height: 1.25,
           fontWeight: FontWeight.w400,
@@ -212,14 +211,8 @@ String providerLabel(SettingsController s) {
       return 'Anthropic';
     case 'google':
       return 'Google';
-    case 'nvidia':
-      return 'NVIDIA';
     case 'openrouter':
       return 'OpenRouter';
-    case 'deepseek':
-      return 'DeepSeek';
-    case 'kimi':
-      return 'Kimi';
     case 'custom':
       final n = s.customCloudName.value.trim();
       return n.isEmpty ? 'a custom endpoint' : n;
@@ -351,7 +344,7 @@ class _ModelCard extends StatelessWidget {
                     Text(title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.inter(
+                        style: TextStyle(fontFamily: 'Inter',
                             fontSize: 15,
                             fontWeight: FontWeight.w600,
                             letterSpacing: -0.2,
@@ -368,7 +361,7 @@ class _ModelCard extends StatelessWidget {
                         child: Text(meta,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.inter(
+                            style: TextStyle(fontFamily: 'Inter',
                                 fontSize: 12.5,
                                 color: t.muted,
                                 fontFeatures: const [
@@ -426,7 +419,7 @@ class _ActionChip extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
           child: Text(label,
-              style: GoogleFonts.inter(
+              style: TextStyle(fontFamily: 'Inter',
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
                   color: primary ? Colors.white : t.text)),
@@ -506,7 +499,7 @@ class _Starters extends StatelessWidget {
                       child: Text(s.label,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.inter(
+                          style: TextStyle(fontFamily: 'Inter',
                               fontSize: 15,
                               letterSpacing: -0.15,
                               color: t.text.withValues(alpha: 0.9))),
@@ -550,7 +543,7 @@ class _GettingStarted extends StatelessWidget {
                 border: Border.all(color: t.faint, width: 1),
               ),
               child: Text('${i + 1}',
-                  style: GoogleFonts.inter(
+                  style: TextStyle(fontFamily: 'Inter',
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                       color: t.muted)),
@@ -562,13 +555,13 @@ class _GettingStarted extends StatelessWidget {
                   children: [
                     const SizedBox(height: 2),
                     Text(steps[i].$1,
-                        style: GoogleFonts.inter(
+                        style: TextStyle(fontFamily: 'Inter',
                             fontSize: 15,
                             fontWeight: FontWeight.w600,
                             color: t.text)),
                     const SizedBox(height: 2),
                     Text(steps[i].$2,
-                        style: GoogleFonts.inter(
+                        style: TextStyle(fontFamily: 'Inter',
                             fontSize: 13.5, height: 1.35, color: t.muted)),
                   ]),
             ),

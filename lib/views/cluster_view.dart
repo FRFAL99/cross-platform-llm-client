@@ -3,14 +3,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:llama_flutter_android/llama_flutter_android.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:qr_flutter/qr_flutter.dart';
 
 import '../core/ui.dart';
 import '../services/cluster_service.dart';
 
 /// Phone cluster: pick Master (runs the model) or Worker (lends this phone),
-/// and pair them by scanning the worker's QR code.
+/// and pair them by entering the worker's IP address.
 class ClusterView extends StatefulWidget {
   const ClusterView({super.key});
 
@@ -88,8 +86,8 @@ class _ClusterViewState extends State<ClusterView> {
                   'Master: the phone you chat on. It runs the model.\n'
                   'Worker: a phone that lends its memory to the master.'
               : 'Help an Android phone running PrivateLM run models too big for '
-                  'it alone: choose Worker, then scan this device\'s QR code '
-                  'from that phone.',
+                  'it alone: choose Worker, then enter the address it shows on '
+                  'that phone.',
           icon: Icons.hub_outlined,
         ),
       ];
@@ -99,7 +97,7 @@ class _ClusterViewState extends State<ClusterView> {
   List<Widget> _workerSection(BuildContext context) {
     final t = AppTokens.of(context);
     final s = cluster.worker.value;
-    final qr = cluster.workerQrData;
+    final address = cluster.workerAddress;
 
     final Widget body;
     if (s.state == 'error') {
@@ -126,7 +124,7 @@ class _ClusterViewState extends State<ClusterView> {
           Expanded(child: _Stat(label: 'Memory speed', value: '${s.bandwidth.toStringAsFixed(1)} GB/s')),
         ]),
       ]);
-    } else if (!s.running || qr == null) {
+    } else if (!s.running || address == null) {
       body = _centered(context, [
         const SizedBox(width: 28, height: 28, child: CircularProgressIndicator(strokeWidth: 2.5)),
         const SizedBox(height: 16),
@@ -134,21 +132,15 @@ class _ClusterViewState extends State<ClusterView> {
       ]);
     } else {
       body = _centered(context, [
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: QrImageView(data: qr, size: 220, padding: EdgeInsets.zero),
-        ),
-        const SizedBox(height: 16),
-        Text('Scan this from the master phone', style: t.bodyStrong),
-        const SizedBox(height: 6),
+        Text('Enter this on the master phone', style: t.caption),
+        const SizedBox(height: 8),
+        SelectableText(address,
+            style: t.bodyStrong.copyWith(fontSize: 26, fontFamily: 'FiraCode')),
+        const SizedBox(height: 8),
         Row(mainAxisSize: MainAxisSize.min, children: [
           StatusDot(t.green, size: 8),
           const SizedBox(width: 6),
-          Text('Ready · ${cluster.wifiAddress.value}', style: t.caption),
+          Text('Ready', style: t.caption),
         ]),
         const SizedBox(height: 16),
         Row(children: [
@@ -201,9 +193,9 @@ class _ClusterViewState extends State<ClusterView> {
         const SizedBox(height: 16),
       ],
       PrimaryButton(
-        label: 'Scan a worker\'s QR code',
-        icon: Icons.qr_code_scanner_rounded,
-        onPressed: _scanQr,
+        label: 'Add a worker by IP',
+        icon: Icons.keyboard_rounded,
+        onPressed: () => _enterIp(context),
       ),
       SectionHeader('Workers (${cluster.workers.length})'),
       if (cluster.workers.isEmpty)
@@ -212,7 +204,7 @@ class _ClusterViewState extends State<ClusterView> {
             icon: Icons.devices_other_rounded,
             title: 'No workers yet',
             message: 'On each other phone, open Phone cluster, choose Worker, '
-                'then scan the QR code it shows.',
+                'then enter the address it shows.',
           ),
         ])
       else
@@ -246,12 +238,6 @@ class _ClusterViewState extends State<ClusterView> {
           icon: Icons.wifi_find_rounded,
           onPressed: cluster.isScanning.value ? null : cluster.scanNearby,
         ),
-        const SizedBox(width: 10),
-        PillButton(
-          label: 'Enter IP',
-          icon: Icons.keyboard_rounded,
-          onPressed: () => _enterIp(context),
-        ),
       ]),
       if (cluster.found.isNotEmpty) ...[
         const SizedBox(height: 12),
@@ -272,17 +258,12 @@ class _ClusterViewState extends State<ClusterView> {
     ];
   }
 
-  Future<void> _scanQr() async {
-    final code = await Get.to<String>(() => const _QrScanPage());
-    if (code != null) await _report(cluster.addFromQr(code));
-  }
-
   Future<void> _enterIp(BuildContext context) async {
     final ctrl = TextEditingController();
     final input = await showAppSheet<String>(
       context,
       title: 'Enter worker IP',
-      subtitle: 'Shown under the worker\'s QR code',
+      subtitle: 'Shown on the worker phone',
       builder: (ctx) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -434,71 +415,6 @@ class _PulsingDotState extends State<_PulsingDot> with SingleTickerProviderState
           ),
         ]),
       ),
-    );
-  }
-}
-
-/// Full-screen camera that returns the first QR code it reads.
-class _QrScanPage extends StatefulWidget {
-  const _QrScanPage();
-
-  @override
-  State<_QrScanPage> createState() => _QrScanPageState();
-}
-
-class _QrScanPageState extends State<_QrScanPage> {
-  final MobileScannerController _controller =
-      MobileScannerController(formats: const [BarcodeFormat.qrCode]);
-  bool _done = false;
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _onDetect(BarcodeCapture capture) {
-    if (_done) return;
-    final value = capture.barcodes
-        .map((b) => b.rawValue ?? '')
-        .firstWhere((v) => v.isNotEmpty, orElse: () => '');
-    if (value.isEmpty) return;
-    _done = true;
-    Get.back(result: value);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
-        title: const Text('Scan worker QR code'),
-      ),
-      body: Stack(children: [
-        MobileScanner(controller: _controller, onDetect: _onDetect),
-        Center(
-          child: Container(
-            width: 240,
-            height: 240,
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.white, width: 2),
-              borderRadius: BorderRadius.circular(20),
-            ),
-          ),
-        ),
-        const Positioned(
-          left: 24,
-          right: 24,
-          bottom: 48,
-          child: Text(
-            'Point at the QR code on the worker phone',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.white, fontSize: 15),
-          ),
-        ),
-      ]),
     );
   }
 }

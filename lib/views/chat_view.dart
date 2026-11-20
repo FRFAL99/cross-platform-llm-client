@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../controllers/chat_controller.dart';
 import '../controllers/settings_controller.dart';
 import '../controllers/model_controller.dart';
@@ -119,7 +118,7 @@ class ChatView extends GetView<ChatController> {
           return Padding(
             padding: const EdgeInsets.only(right: 16),
             child: Text('PrivateLM',
-                style: GoogleFonts.inter(
+                style: TextStyle(fontFamily: 'Inter',
                     fontWeight: FontWeight.w700,
                     fontSize: 18,
                     letterSpacing: -0.5,
@@ -144,7 +143,7 @@ class ChatView extends GetView<ChatController> {
                   Text(title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.inter(
+                      style: TextStyle(fontFamily: 'Inter',
                           fontWeight: FontWeight.w600,
                           fontSize: 16,
                           letterSpacing: -0.3,
@@ -161,7 +160,7 @@ class ChatView extends GetView<ChatController> {
                       child: Text(info.name,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.inter(
+                          style: TextStyle(fontFamily: 'Inter',
                               fontSize: 12.5,
                               color: Theme.of(context).hintColor)),
                     ),
@@ -318,7 +317,7 @@ class ChatView extends GetView<ChatController> {
                 ),
                 const SizedBox(height: 18),
                 Text('Model',
-                    style: GoogleFonts.inter(
+                    style: TextStyle(fontFamily: 'Inter',
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
                         color: muted)),
@@ -326,7 +325,7 @@ class ChatView extends GetView<ChatController> {
                 Text(info.name,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.inter(
+                    style: TextStyle(fontFamily: 'Inter',
                         fontSize: 18,
                         fontWeight: FontWeight.w600,
                         letterSpacing: -0.3,
@@ -341,7 +340,7 @@ class ChatView extends GetView<ChatController> {
                   const SizedBox(width: 6),
                   Flexible(
                     child: Text(info.meta,
-                        style: GoogleFonts.inter(fontSize: 13, color: muted)),
+                        style: TextStyle(fontFamily: 'Inter', fontSize: 13, color: muted)),
                   ),
                 ]),
                 if (usage != null) ...[
@@ -349,13 +348,13 @@ class ChatView extends GetView<ChatController> {
                   Row(children: [
                     Expanded(
                       child: Text('Context',
-                          style: GoogleFonts.inter(
+                          style: TextStyle(fontFamily: 'Inter',
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
                               color: muted)),
                     ),
                     Text('${_fmtK(usage.used)} / ${_fmtK(usage.total)} tokens',
-                        style: GoogleFonts.inter(
+                        style: TextStyle(fontFamily: 'Inter',
                             fontSize: 13,
                             color: warn ? const Color(0xFFFF9500) : muted,
                             fontFeatures: const [
@@ -377,7 +376,7 @@ class ChatView extends GetView<ChatController> {
                   if (warn) ...[
                     const SizedBox(height: 8),
                     Text('Almost full. Start a new chat for best results.',
-                        style: GoogleFonts.inter(fontSize: 12.5, color: muted)),
+                        style: TextStyle(fontFamily: 'Inter', fontSize: 12.5, color: muted)),
                   ],
                 ],
                 const SizedBox(height: 24),
@@ -421,13 +420,13 @@ class ChatView extends GetView<ChatController> {
           Row(children: [
             Expanded(
               child: Text('Loading model',
-                  style: GoogleFonts.inter(
+                  style: TextStyle(fontFamily: 'Inter',
                       fontSize: 12.5,
                       color: Theme.of(context).hintColor,
                       fontWeight: FontWeight.w500)),
             ),
             Text('$pct%',
-                style: GoogleFonts.inter(
+                style: TextStyle(fontFamily: 'Inter',
                     fontSize: 12.5,
                     color: Theme.of(context).hintColor,
                     fontFeatures: const [FontFeature.tabularFigures()])),
@@ -494,7 +493,7 @@ class ChatView extends GetView<ChatController> {
                 alignment: Alignment.centerLeft,
                 child: Text(
                     '${inf.tokensPerSecond.value.toStringAsFixed(1)} tok/s',
-                    style: GoogleFonts.inter(
+                    style: TextStyle(fontFamily: 'Inter',
                         fontSize: 12,
                         color:
                             Theme.of(context).hintColor.withValues(alpha: 0.8),
@@ -519,7 +518,7 @@ class ChatView extends GetView<ChatController> {
       const SizedBox(width: 10),
       Flexible(
           child: Text(msg,
-              style: GoogleFonts.inter(
+              style: TextStyle(fontFamily: 'Inter',
                   fontSize: 12,
                   color: Theme.of(context).hintColor,
                   fontWeight: FontWeight.w400))),
@@ -568,13 +567,13 @@ class ChatView extends GetView<ChatController> {
                     border: Border.all(
                         color: const Color(0xFFFF3B30).withValues(alpha: 0.3)),
                   ),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    const _PulsingDot(),
-                    const SizedBox(width: 8),
+                  child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                    _PulsingDot(),
+                    SizedBox(width: 8),
                     Text('Listening… tap mic to stop',
-                        style: GoogleFonts.inter(
+                        style: TextStyle(fontFamily: 'Inter',
                             fontSize: 12,
-                            color: const Color(0xFFFF3B30),
+                            color: Color(0xFFFF3B30),
                             fontWeight: FontWeight.w500)),
                   ]),
                 ),
@@ -651,7 +650,7 @@ class ChatView extends GetView<ChatController> {
                             onChanged: (v) => controller.inputText.value = v,
                             maxLines: 5,
                             minLines: 1,
-                            style: GoogleFonts.inter(
+                            style: TextStyle(fontFamily: 'Inter',
                                 fontSize: 15,
                                 color: isDark ? Colors.white : Colors.black),
                             decoration: InputDecoration(
@@ -660,7 +659,7 @@ class ChatView extends GetView<ChatController> {
                                   : loadingModel
                                       ? 'Loading model…'
                                       : 'Load a model to start chatting',
-                              hintStyle: GoogleFonts.inter(
+                              hintStyle: TextStyle(fontFamily: 'Inter',
                                   fontSize: 15,
                                   color: Theme.of(context).hintColor),
                               border: InputBorder.none,
@@ -765,14 +764,14 @@ class ChatView extends GetView<ChatController> {
 
   MarkdownStyleSheet _thoughtMd(BuildContext c, bool isDark) {
     final muted = Theme.of(c).hintColor;
-    final base = GoogleFonts.inter(fontSize: 13, color: muted, height: 1.4);
+    final base = TextStyle(fontFamily: 'Inter', fontSize: 13, color: muted, height: 1.4);
     final codeBg = isDark ? const Color(0xFF2C2C2E) : const Color(0xFFE5E5EA);
     return MarkdownStyleSheet.fromTheme(Theme.of(c)).copyWith(
         p: base,
         strong: base.copyWith(fontWeight: FontWeight.w600),
         em: base.copyWith(fontStyle: FontStyle.italic),
         listBullet: base,
-        code: GoogleFonts.firaCode(
+        code: TextStyle(fontFamily: 'FiraCode',
             fontSize: 11, color: muted, backgroundColor: codeBg),
         codeblockDecoration: BoxDecoration(
             color: codeBg, borderRadius: BorderRadius.circular(10)));
@@ -950,14 +949,14 @@ class _AttachButton extends StatelessWidget {
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     Text(it.label,
-                                        style: GoogleFonts.inter(
+                                        style: TextStyle(fontFamily: 'Inter',
                                             fontSize: 16,
                                             fontWeight: FontWeight.w500,
                                             letterSpacing: -0.2,
                                             color: fg)),
                                     if (!it.enabled)
                                       Text('Needs a vision model',
-                                          style: GoogleFonts.inter(
+                                          style: TextStyle(fontFamily: 'Inter',
                                               fontSize: 12, color: muted)),
                                   ]),
                             ),

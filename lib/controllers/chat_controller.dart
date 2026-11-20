@@ -96,7 +96,20 @@ class ChatController extends GetxController {
   Future<void> _initSpeech() async {
     try {
       sttAvailable.value = await _speech.initialize(
-        onError: (_) => isListening.value = false,
+        onError: (error) {
+          isListening.value = false;
+          // Recognition is on-device only, so a missing offline language
+          // pack shows up as a language or network error.
+          final msg = error.errorMsg;
+          if (msg.contains('language') || msg.contains('network')) {
+            showToast(
+              'Voice input unavailable offline',
+              'Download the offline speech language for your phone language '
+                  'in the system voice input settings.',
+              tone: ToastTone.error,
+            );
+          }
+        },
         onStatus: (status) {
           if (status == 'done' || status == 'notListening') {
             isListening.value = false;
@@ -131,7 +144,9 @@ class ChatController extends GetxController {
         },
         listenFor: const Duration(seconds: 60),
         pauseFor: const Duration(seconds: 4),
-        localeId: 'en_US',
+        // Privacy: never send audio to a cloud speech service. Uses the
+        // phone's language; fails if its offline model isn't installed.
+        listenOptions: stt.SpeechListenOptions(onDevice: true),
       );
       isListening.value = true;
     } catch (_) {
@@ -250,17 +265,8 @@ class ChatController extends GetxController {
       case 'google':
         modelName = s.googleModel.value;
         break;
-      case 'kimi':
-        modelName = s.kimiModel.value;
-        break;
-      case 'nvidia':
-        modelName = s.nvidiaModel.value;
-        break;
       case 'openrouter':
         modelName = s.openRouterModel.value;
-        break;
-      case 'deepseek':
-        modelName = s.deepSeekModel.value;
         break;
       case 'custom':
         modelName = s.customCloudModel.value;

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 /// Tonal sheet button — equal visual weight for each choice; colour carries
 /// the meaning (neutral vs. destructive).
@@ -56,7 +55,7 @@ class TonalButton extends StatelessWidget {
           height: 48,
           child: Center(
             child: Text(label,
-                style: GoogleFonts.inter(
+                style: TextStyle(fontFamily: 'Inter',
                     fontSize: 15, fontWeight: FontWeight.w600, color: color)),
           ),
         ),

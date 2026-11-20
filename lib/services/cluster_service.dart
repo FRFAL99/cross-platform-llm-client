@@ -56,9 +56,6 @@ class ClusterService extends GetxService {
   /// iOS can't stop the worker without closing the app.
   static bool get workerStopsWithApp => !kIsWeb && Platform.isIOS;
 
-  /// QR codes a worker shows: privatelm://worker?host=…&port=…
-  static const _qrScheme = 'privatelm';
-
   /// Speed assumed for workers paired before they reported one (GB/s).
   static const _unknownSpeed = 4.0;
 
@@ -158,19 +155,12 @@ class ClusterService extends GetxService {
 
   // ── Worker ─────────────────────────────────────────────────────────────
 
-  /// What the master scans to add this phone, once the worker is running.
-  String? get workerQrData {
+  /// What the master enters to add this phone ("192.168.1.20:50052"), once
+  /// the worker is running.
+  String? get workerAddress {
     final host = wifiAddress.value;
-    final status = worker.value;
-    if (host == null || !status.running) return null;
-    return Uri(scheme: _qrScheme, host: 'worker', queryParameters: {
-      'host': host,
-      'port': '${LlamaCluster.defaultPort}',
-      if (deviceName.isNotEmpty) 'name': deviceName,
-      if (status.ramMb > 0) 'ram': '${status.ramMb}',
-      if (status.bandwidth > 0) 'bw': status.bandwidth.toStringAsFixed(1),
-      if (status.id != null) 'id': status.id!,
-    }).toString();
+    if (host == null || !worker.value.running) return null;
+    return '$host:${LlamaCluster.defaultPort}';
   }
 
   Future<void> startWorker() async {
@@ -234,27 +224,6 @@ class ClusterService extends GetxService {
 
   // ── Master: workers ────────────────────────────────────────────────────
 
-  /// Adds the worker from a scanned QR code. Returns an error message, or
-  /// null on success.
-  Future<String?> addFromQr(String data) async {
-    final uri = Uri.tryParse(data.trim());
-    final params = uri?.queryParameters ?? const {};
-    final host = params['host'];
-    final port = int.tryParse(params['port'] ?? '');
-    if (uri == null || uri.scheme != _qrScheme || host == null || port == null) {
-      return 'That isn\'t a PrivateLM worker code';
-    }
-    return _add(ClusterWorker(
-      name: params['name'] ?? host,
-      host: host,
-      port: port,
-      ramMb: int.tryParse(params['ram'] ?? ''),
-      bandwidth: double.tryParse(params['bw'] ?? ''),
-      model: params['name'],
-      id: params['id'],
-    ));
-  }
-
   /// Adds a worker by IP ("192.168.1.20" or "192.168.1.20:50052"). Returns
   /// an error message, or null on success.
   Future<String?> addManual(String input) async {
@@ -265,7 +234,16 @@ class ClusterService extends GetxService {
         ? int.tryParse(text.substring(text.lastIndexOf(':') + 1))
         : LlamaCluster.defaultPort;
     if (host.isEmpty || port == null) return 'Use the form 192.168.1.20:50052';
-    return _add(ClusterWorker(name: host, host: host, port: port));
+    // Discovery also reports the worker's name, memory, speed and device ID
+    // (used to find it again if its IP changes). Use them when it answers.
+    ClusterWorker? found;
+    try {
+      final nearby = await LlamaCluster.discover(timeout: const Duration(seconds: 2));
+      for (final w in nearby) {
+        if (w.host == host && w.port == port) found = w;
+      }
+    } catch (_) {}
+    return _add(found ?? ClusterWorker(name: host, host: host, port: port));
   }
 
   Future<String?> addFound(ClusterWorker w) => _add(w);

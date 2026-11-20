@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../models/chat_message.dart';
 import '../utils/thought_parser.dart';
 import 'attachment_preview.dart';
@@ -92,7 +91,7 @@ class ChatBubble extends StatelessWidget {
             ),
             child: SelectableText(
               text,
-              style: GoogleFonts.inter(
+              style: TextStyle(fontFamily: 'Inter',
                 fontSize: 15.5,
                 height: 1.45,
                 letterSpacing: -0.1,
@@ -150,7 +149,7 @@ class ChatBubble extends StatelessWidget {
               if (meta.isNotEmpty) ...[
                 const SizedBox(width: 6),
                 Text(meta.join(' · '),
-                    style: GoogleFonts.inter(
+                    style: TextStyle(fontFamily: 'Inter',
                         fontSize: 12,
                         color: muted.withValues(alpha: 0.8),
                         fontFeatures: const [FontFeature.tabularFigures()])),
@@ -169,7 +168,7 @@ class ChatBubble extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final color = Theme.of(context).colorScheme.onSurface;
     final muted = Theme.of(context).hintColor;
-    final base = GoogleFonts.inter(
+    final base = TextStyle(fontFamily: 'Inter',
         fontSize: 15.5, color: color, height: 1.6, letterSpacing: -0.1);
     final codeBlockBg =
         isDark ? const Color(0xFF161618) : const Color(0xFFF3F3F5);
@@ -179,7 +178,7 @@ class ChatBubble extends StatelessWidget {
       strong: base.copyWith(fontWeight: FontWeight.w600),
       em: base.copyWith(fontStyle: FontStyle.italic),
       listBullet: base,
-      code: GoogleFonts.firaCode(
+      code: TextStyle(fontFamily: 'FiraCode',
         fontSize: 13,
         color: color,
         backgroundColor: codeBlockBg,
@@ -216,7 +215,7 @@ class ChatBubble extends StatelessWidget {
 
   MarkdownStyleSheet _thoughtMarkdownStyle(BuildContext context) {
     final muted = Theme.of(context).hintColor;
-    final base = GoogleFonts.inter(fontSize: 13, color: muted, height: 1.4);
+    final base = TextStyle(fontFamily: 'Inter', fontSize: 13, color: muted, height: 1.4);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
@@ -224,7 +223,7 @@ class ChatBubble extends StatelessWidget {
       strong: base.copyWith(fontWeight: FontWeight.w600),
       em: base.copyWith(fontStyle: FontStyle.italic),
       listBullet: base,
-      code: GoogleFonts.firaCode(
+      code: TextStyle(fontFamily: 'FiraCode',
         fontSize: 11,
         color: muted,
         backgroundColor:
@@ -321,7 +320,7 @@ class ChatBubble extends StatelessWidget {
                             const SizedBox(width: 4),
                             Text(
                               _formatGenTime(message.imageGenDurationMs!),
-                              style: GoogleFonts.inter(
+                              style: const TextStyle(fontFamily: 'Inter',
                                   fontSize: 10,
                                   color: Colors.white,
                                   fontWeight: FontWeight.w600),

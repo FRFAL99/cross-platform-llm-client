@@ -11,14 +11,11 @@ class AppConstants {
   // Settings Keys
   static const String keyInferenceMode = 'inference_mode'; // 'local' or 'cloud'
   static const String keyCloudProvider =
-      'cloud_provider'; // 'openai', 'anthropic', 'google', 'kimi'
+      'cloud_provider'; // 'openai', 'anthropic', 'google', 'openrouter', 'custom'
   static const String keyOpenaiKey = 'openai_api_key';
   static const String keyAnthropicKey = 'anthropic_api_key';
   static const String keyGoogleKey = 'google_api_key';
-  static const String keyKimiKey = 'kimi_api_key';
-  static const String keyNvidiaKey = 'nvidia_api_key';
   static const String keyOpenRouterKey = 'openrouter_api_key';
-  static const String keyDeepSeekKey = 'deepseek_api_key';
   static const String keyCustomCloudName = 'custom_cloud_name';
   static const String keyCustomCloudBaseUrl = 'custom_cloud_base_url';
   static const String keyCustomCloudKey = 'custom_cloud_api_key';
@@ -27,10 +24,7 @@ class AppConstants {
   static const String keyOpenaiModel = 'openai_model';
   static const String keyAnthropicModel = 'anthropic_model';
   static const String keyGoogleModel = 'google_model';
-  static const String keyKimiModel = 'kimi_model';
-  static const String keyNvidiaModel = 'nvidia_model';
   static const String keyOpenRouterModel = 'openrouter_model';
-  static const String keyDeepSeekModel = 'deepseek_model';
   static const String keyCustomCloudModel = 'custom_cloud_model';
   static const String keyGlobalSystemPrompt = 'global_system_prompt';
   static const String keyLocalModelPath = 'local_model_path';
@@ -259,9 +253,5 @@ class AppConstants {
       'https://api.anthropic.com/v1/messages';
   static const String googleEndpoint =
       'https://generativelanguage.googleapis.com/v1beta/models';
-  static const String kimiEndpoint =
-      'https://api.moonshot.ai/v1/chat/completions';
-  static const String nvidiaEndpoint = 'https://integrate.api.nvidia.com/v1';
   static const String openRouterEndpoint = 'https://openrouter.ai/api/v1';
-  static const String deepSeekEndpoint = 'https://api.deepseek.com';
 }

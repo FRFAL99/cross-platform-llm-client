@@ -1238,7 +1238,7 @@ class ModelController extends GetxController {
                   padding: EdgeInsets.fromLTRB(0, 0, 0, 10)),
               if (isCluster) ...[
                 _buildTipRow(ctx, Icons.hub_outlined,
-                    'On each worker, open PrivateLM > Phone cluster and check that Worker is on and shows its QR code.'),
+                    'On each worker, open PrivateLM > Phone cluster and check that Worker is on and shows its address.'),
                 _buildTipRow(ctx, Icons.wifi_rounded,
                     'Keep every device on the same Wi-Fi. iPads must keep PrivateLM open.'),
               ] else ...[

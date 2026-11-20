@@ -9,7 +9,7 @@ This is a fork of [orailnoor/cross-platform-llm-client](https://github.com/orail
 1. On your phone, open the [latest release](https://github.com/FRFAL99/cross-platform-llm-client/releases/latest).
 2. Download `PrivateLM-<version>-arm64-v8a.apk` (almost every recent phone). Use `armeabi-v7a` only on old 32-bit phones.
 3. Open the file and allow your browser or file manager to install unknown apps when Android asks.
-4. Later versions arrive in the app itself (Settings › App updates), from the same releases page.
+4. To update, use Settings › App updates › Check for updates. The automatic check is off by default, so the app doesn't contact GitHub unless you ask.
 
 If you installed the upstream PrivateLM before, uninstall it first: it uses the same package name but a different signing key, so Android refuses to update it.
 
@@ -18,9 +18,10 @@ If you installed the upstream PrivateLM before, uninstall it first: it uses the 
 ## What It Does
 
 - **Local Inference on Android** — Download and run GGUF models directly on your phone using GPU-accelerated inference (Vulkan). No internet required after download.
-- **Cloud Providers** — Switch to OpenAI, Anthropic, Google Gemini, Kimi, DeepSeek, OpenRouter, NVIDIA or any OpenAI-compatible endpoint when you need more power.
+- **Cloud Providers** — Switch to OpenAI, Anthropic, Google Gemini, OpenRouter or any OpenAI-compatible endpoint (DeepSeek, Kimi, NVIDIA NIM, Ollama, LM Studio…) when you need more power. They are contacted only once you add an API key.
 - **Local API Server** — Serve the loaded model as an OpenAI-compatible endpoint (localhost by default; network mode requires an API key).
-- **Phone Cluster (experimental)** — Split one GGUF model across phones on the same Wi-Fi. Workers accept unauthenticated connections, so use it only on a trusted network.
+- **Phone Cluster (experimental)** — Split one GGUF model across phones on the same Wi-Fi; add a worker by entering the address it shows. Workers accept unauthenticated connections, so use it only on a trusted network.
+- **No hidden network calls** — Fonts are bundled, voice input runs on the device, PDF text is extracted on the device (PDFium), and there is no analytics or crash reporting.
 - **Multimodal Chat** — Send text and images in conversations. Vision support works with both local models (Qwen2-VL) and cloud providers.
 - **Persistent Sessions** — All chats and settings are stored locally via Hive; API keys go to the OS secure storage (Keystore/Keychain). Nothing leaves your device unless you explicitly choose cloud mode.
 - **Smart Auto-Configuration** — On first launch, the app detects your device's RAM and recommends optimal context size and token limits automatically.
@@ -55,7 +56,7 @@ If you installed the upstream PrivateLM before, uninstall it first: it uses the 
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────┐ │
 │  │ InferenceService│  │  CloudService   │  │DownloadSvc  │ │
 │  │  (local GGUF)   │  │ (OpenAI/Claude/ │  │ (model dl)  │ │
-│  │                 │  │  Gemini/Kimi)   │  │             │ │
+│  │                 │  │ Gemini/custom)  │  │             │ │
 │  └─────────────────┘  └─────────────────┘  └─────────────┘ │
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────┐ │
 │  │  HiveService    │  │ DeviceInfoSvc   │  │ UpdateSvc   │ │
@@ -78,12 +79,12 @@ Idle detection (5s) and hard timeouts (180s) keep the UX responsive even on unde
 
 ### Cloud Inference
 
-`CloudService` normalizes four different API shapes into a single interface:
+`CloudService` normalizes three API shapes into a single interface:
 
 - **OpenAI** — standard `/v1/chat/completions`
 - **Anthropic** — Messages API with separate system param
 - **Google Gemini** — `generateContent` with inline image base64
-- **Kimi** — OpenAI-compatible endpoint from Moonshot AI
+- **OpenRouter and Custom API** — any OpenAI-compatible endpoint, with your own base URL
 
 API keys are stored in the OS secure storage (Android Keystore / iOS Keychain) and never transmitted anywhere except to the provider's endpoint.
 

@@ -22,7 +22,9 @@ Privacy is the product. Nothing should leave the device unless the user picked a
 ## Rules and decisions
 
 - **Secrets**: API keys never go in plain Hive. `HiveService.secretKeys` routes them to `flutter_secure_storage` (Keystore/Keychain); add any new credential setting to that set.
-- **Updates**: in-app updates read GitHub Releases of `AppConstants.githubRepo`, which must point to this fork.
+- **Updates**: in-app updates read GitHub Releases of `AppConstants.githubRepo`, which must point to this fork. The automatic check is off by default; the user checks manually.
+- **No hidden network calls**: nothing contacts a third party unless the user set it up. Fonts (Inter, Fira Code) are bundled in `assets/fonts` (no `google_fonts`), speech-to-text is on-device only, PDF text uses `pdfrx` (PDFium) instead of Syncfusion, and the cluster pairs by IP (no camera/ML Kit QR scanner). Don't add analytics, crash reporting or packages that fetch at runtime.
+- **Cloud providers**: OpenAI, Anthropic, Gemini, OpenRouter and Custom API (any OpenAI-compatible endpoint). The Kimi, NVIDIA and DeepSeek presets were removed: use Custom API for them.
 - **Removed, don't bring back**: Task/ExecutionService (let the LLM run ADB shell commands), image generation (Stable Diffusion, Core ML, Stability AI), the LiteRT engine, Firebase/Crashlytics, the boot receiver.
 - One local engine only: llama.cpp with GGUF models.
 - **Phone cluster** (`ClusterService`, llama.cpp RPC across phones on the same Wi-Fi) stays for now, off by default. Its RPC workers have no authentication, so use it only on a trusted network. No new work on it until the PC connection (Ollama / LM Studio) exists; then decide whether to keep it.

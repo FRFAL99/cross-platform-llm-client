@@ -20,9 +20,6 @@ dependencies:
   # Local AI Inference (Android)
   llama_flutter_android: ^0.2.0
 
-  # FFI for native library interop
-  ffi: ^2.1.2
-
   # Secure storage for API keys (Keystore / Keychain)
   flutter_secure_storage: ^9.2.4
 
@@ -32,32 +29,27 @@ dependencies:
 
   # File System & Permissions
   path_provider: ^2.1.0
-  permission_handler: ^11.3.0
 
   # Image Support
   image_picker: ^1.1.0
   share_plus: ^10.0.0
 
   # UI
-  google_fonts: ^6.2.0
   flutter_markdown: ^0.7.4
 
   # Utils
   uuid: ^4.5.0
-  intl: ^0.19.0
 
   # Misc
   file_picker: ^11.0.2
   image: ^4.8.0
   gal: ^2.3.2
-  syncfusion_flutter_pdf: ^33.2.6
   speech_to_text: ^7.0.0
   package_info_plus: ^9.0.1
   device_info_plus: ^12.4.0
   archive: ^4.0.9
   xml: ^6.6.1
-  qr_flutter: ^4.1.0
-  mobile_scanner: ^7.4.2
+  pdfrx: ^3.0.0
 
 dev_dependencies:
   flutter_test:
@@ -74,3 +66,22 @@ flutter:
   assets:
     - assets/
     - assets/icons/
+    - assets/fonts/Inter-OFL.txt
+    - assets/fonts/FiraCode-OFL.txt
+
+  # Fonts are bundled so the app never downloads them from Google at runtime.
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-Regular.ttf
+        - asset: assets/fonts/Inter-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Inter-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Inter-Bold.ttf
+          weight: 700
+    - family: FiraCode
+      fonts:
+        - asset: assets/fonts/FiraCode-Regular.ttf
+        - asset: assets/fonts/FiraCode-Medium.ttf
+          weight: 500

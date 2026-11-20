@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../controllers/cloud_model_controller.dart';
 import '../controllers/model_controller.dart';
 import '../controllers/settings_controller.dart';
@@ -719,7 +718,7 @@ class ModelView extends GetView<ModelController> {
                     children: [
                       Text(
                         name.isEmpty ? provider.name : name,
-                        style: GoogleFonts.inter(
+                        style: TextStyle(fontFamily: 'Inter',
                           fontSize: 20,
                           fontWeight: FontWeight.w700,
                           letterSpacing: -0.5,
@@ -2207,7 +2206,7 @@ class _TextAction extends StatelessWidget {
             if (busy || icon != null) const SizedBox(width: 5),
             Text(
               label,
-              style: GoogleFonts.inter(
+              style: TextStyle(fontFamily: 'Inter',
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
                 color: fg,
@@ -2431,7 +2430,7 @@ class _ModelAvatar extends StatelessWidget {
           ),
           child: Text(
             mono[0].toUpperCase() + mono.substring(1),
-            style: GoogleFonts.inter(
+            style: TextStyle(fontFamily: 'Inter',
               fontSize: size * 0.36,
               fontWeight: FontWeight.w700,
               letterSpacing: -0.3,

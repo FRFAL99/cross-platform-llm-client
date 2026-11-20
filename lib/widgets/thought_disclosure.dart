@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 class ThoughtDisclosure extends StatefulWidget {
   final String thought;
@@ -143,7 +142,7 @@ class _ThoughtDisclosureState extends State<ThoughtDisclosure>
                     ),
                   Text(
                     _label,
-                    style: GoogleFonts.inter(
+                    style: TextStyle(fontFamily: 'Inter',
                       fontSize: 13,
                       color: widget.isThinking ? accentColor : muted,
                       fontWeight: FontWeight.w500,

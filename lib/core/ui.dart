@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../widgets/tonal_button.dart';
 import 'haptics.dart';
@@ -73,27 +72,27 @@ class AppTokens {
   }
 
   // ── Type scale ──
-  TextStyle get title => GoogleFonts.inter(
+  TextStyle get title => TextStyle(fontFamily: 'Inter',
       fontSize: 17,
       fontWeight: FontWeight.w600,
       letterSpacing: -0.3,
       color: text);
   TextStyle get body =>
-      GoogleFonts.inter(fontSize: 15, letterSpacing: -0.15, color: text);
-  TextStyle get bodyStrong => GoogleFonts.inter(
+      TextStyle(fontFamily: 'Inter', fontSize: 15, letterSpacing: -0.15, color: text);
+  TextStyle get bodyStrong => TextStyle(fontFamily: 'Inter',
       fontSize: 15,
       fontWeight: FontWeight.w600,
       letterSpacing: -0.2,
       color: text);
   TextStyle get caption =>
-      GoogleFonts.inter(fontSize: 13, height: 1.35, color: muted);
-  TextStyle get small => GoogleFonts.inter(fontSize: 12, color: muted);
-  TextStyle get label => GoogleFonts.inter(
+      TextStyle(fontFamily: 'Inter', fontSize: 13, height: 1.35, color: muted);
+  TextStyle get small => TextStyle(fontFamily: 'Inter', fontSize: 12, color: muted);
+  TextStyle get label => TextStyle(fontFamily: 'Inter',
       fontSize: 13,
       fontWeight: FontWeight.w600,
       letterSpacing: -0.08,
       color: muted);
-  TextStyle get mono => GoogleFonts.firaCode(fontSize: 12.5, color: text);
+  TextStyle get mono => TextStyle(fontFamily: 'FiraCode', fontSize: 12.5, color: text);
 }
 
 // ── Page chrome ─────────────────────────────────────────────────────────
@@ -118,7 +117,7 @@ PreferredSizeWidget appScreenBar(
     iconTheme: IconThemeData(color: t.text),
     titleSpacing: leading == null && !showBack ? 20 : 0,
     title: Text(title,
-        style: GoogleFonts.inter(
+        style: TextStyle(fontFamily: 'Inter',
             fontSize: 22,
             fontWeight: FontWeight.w700,
             letterSpacing: -0.6,
@@ -498,7 +497,7 @@ class AppTag extends StatelessWidget {
           const SizedBox(width: 3),
         ],
         Text(label,
-            style: GoogleFonts.inter(
+            style: TextStyle(fontFamily: 'Inter',
                 fontSize: 11, fontWeight: FontWeight.w600, color: fg)),
       ]),
     );
@@ -563,7 +562,7 @@ class AppChips<T> extends StatelessWidget {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   child: Text(label,
-                      style: GoogleFonts.inter(
+                      style: TextStyle(fontFamily: 'Inter',
                           fontSize: 13.5,
                           fontWeight: FontWeight.w500,
                           color: on ? t.bg : t.text.withValues(alpha: 0.85))),
@@ -637,7 +636,7 @@ class AppSegmented<T> extends StatelessWidget {
                   },
                   child: Center(
                     child: Text(items[i].$2,
-                        style: GoogleFonts.inter(
+                        style: TextStyle(fontFamily: 'Inter',
                             fontSize: 14,
                             fontWeight:
                                 i == index ? FontWeight.w600 : FontWeight.w500,
@@ -686,7 +685,7 @@ class PrimaryButton extends StatelessWidget {
           Icon(icon, size: 18, color: Colors.white),
         if (busy || icon != null) const SizedBox(width: 8),
         Text(label,
-            style: GoogleFonts.inter(
+            style: const TextStyle(fontFamily: 'Inter',
                 fontSize: 15,
                 fontWeight: FontWeight.w600,
                 color: Colors.white)),
@@ -758,7 +757,7 @@ class PillButton extends StatelessWidget {
                 const SizedBox(width: 5),
               ],
               Text(label,
-                  style: GoogleFonts.inter(
+                  style: TextStyle(fontFamily: 'Inter',
                       fontSize: 13, fontWeight: FontWeight.w600, color: fg)),
             ]),
           ),
@@ -847,8 +846,8 @@ InputDecoration appInputDecoration(BuildContext context,
     prefixIcon: prefix,
     filled: true,
     fillColor: t.isDark ? const Color(0xFF1C1C1F) : const Color(0xFFF0F0F2),
-    hintStyle: GoogleFonts.inter(fontSize: 15, color: t.faint),
-    labelStyle: GoogleFonts.inter(fontSize: 14, color: t.muted),
+    hintStyle: TextStyle(fontFamily: 'Inter', fontSize: 15, color: t.faint),
+    labelStyle: TextStyle(fontFamily: 'Inter', fontSize: 14, color: t.muted),
     contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
     isDense: true,
     border: b(Colors.transparent),
@@ -913,7 +912,7 @@ Future<T?> showAppSheet<T>(
         children: [
           if (title != null) ...[
             Text(title,
-                style: GoogleFonts.inter(
+                style: TextStyle(fontFamily: 'Inter',
                     fontSize: 20,
                     fontWeight: FontWeight.w700,
                     letterSpacing: -0.5,
@@ -1025,14 +1024,14 @@ void showToast(
           offset: const Offset(0, 8)),
     ],
     titleText: Text(title,
-        style: GoogleFonts.inter(
+        style: const TextStyle(fontFamily: 'Inter',
             fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
     messageText: message.isEmpty
         ? const SizedBox.shrink()
         : Text(message,
             maxLines: 4,
             overflow: TextOverflow.ellipsis,
-            style: GoogleFonts.inter(
-                fontSize: 13, height: 1.35, color: const Color(0xFFC7C7CC))),
+            style: const TextStyle(fontFamily: 'Inter',
+                fontSize: 13, height: 1.35, color: Color(0xFFC7C7CC))),
   );
 }

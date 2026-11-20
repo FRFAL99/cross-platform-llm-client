@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../controllers/chat_controller.dart';
 import '../controllers/home_controller.dart';
 import '../models/chat_session.dart';
@@ -90,13 +89,13 @@ class _ChatDrawerState extends State<ChatDrawer> {
               Text(s.title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.inter(
+                  style: TextStyle(fontFamily: 'Inter',
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
                       color: isDark ? Colors.white : Colors.black)),
               const SizedBox(height: 4),
               Text('This conversation will be permanently deleted.',
-                  style: GoogleFonts.inter(
+                  style: TextStyle(fontFamily: 'Inter',
                       fontSize: 13.5, color: Theme.of(ctx).hintColor)),
               const SizedBox(height: 22),
               Row(children: [
@@ -171,7 +170,7 @@ class _ChatDrawerState extends State<ChatDrawer> {
             child: Row(children: [
               Expanded(
                 child: Text('Chats',
-                    style: GoogleFonts.inter(
+                    style: TextStyle(fontFamily: 'Inter',
                         fontSize: 24,
                         fontWeight: FontWeight.w700,
                         letterSpacing: -0.6,
@@ -195,12 +194,12 @@ class _ChatDrawerState extends State<ChatDrawer> {
                 controller: _search,
                 onChanged: (v) =>
                     setState(() => _query = v.trim().toLowerCase()),
-                style: GoogleFonts.inter(fontSize: 15, color: text),
+                style: TextStyle(fontFamily: 'Inter', fontSize: 15, color: text),
                 cursorColor: accent,
                 textInputAction: TextInputAction.search,
                 decoration: InputDecoration(
                   hintText: 'Search',
-                  hintStyle: GoogleFonts.inter(fontSize: 15, color: muted),
+                  hintStyle: TextStyle(fontFamily: 'Inter', fontSize: 15, color: muted),
                   prefixIcon:
                       Icon(Icons.search_rounded, size: 19, color: muted),
                   prefixIconConstraints:
@@ -250,7 +249,7 @@ class _ChatDrawerState extends State<ChatDrawer> {
                       color: muted.withValues(alpha: 0.6)),
                   const SizedBox(height: 12),
                   Text(_query.isEmpty ? 'No conversations yet' : 'No matches',
-                      style: GoogleFonts.inter(
+                      style: TextStyle(fontFamily: 'Inter',
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
                           color: text)),
@@ -259,7 +258,7 @@ class _ChatDrawerState extends State<ChatDrawer> {
                       _query.isEmpty
                           ? 'Your chats will show up here.'
                           : 'Try a different word.',
-                      style: GoogleFonts.inter(fontSize: 13, color: muted)),
+                      style: TextStyle(fontFamily: 'Inter', fontSize: 13, color: muted)),
                 ]),
               );
             }
@@ -272,7 +271,7 @@ class _ChatDrawerState extends State<ChatDrawer> {
                   Padding(
                     padding: const EdgeInsets.fromLTRB(10, 14, 10, 6),
                     child: Text(g.$1,
-                        style: GoogleFonts.inter(
+                        style: TextStyle(fontFamily: 'Inter',
                             fontSize: 12.5,
                             fontWeight: FontWeight.w600,
                             color: muted)),
@@ -294,7 +293,7 @@ class _ChatDrawerState extends State<ChatDrawer> {
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
             child: Text('Long-press a chat to delete it',
-                style: GoogleFonts.inter(
+                style: TextStyle(fontFamily: 'Inter',
                     fontSize: 12, color: muted.withValues(alpha: 0.8))),
           ),
         ]),
@@ -338,7 +337,7 @@ class _SessionRow extends StatelessWidget {
             child: Text(session.title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: GoogleFonts.inter(
+                style: TextStyle(fontFamily: 'Inter',
                     fontSize: 15,
                     letterSpacing: -0.15,
                     fontWeight: active ? FontWeight.w600 : FontWeight.w400,

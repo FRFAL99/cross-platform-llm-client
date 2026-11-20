@@ -1,15 +1,12 @@
 import 'dart:async';
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
-import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import '../core/constants.dart';
 import '../core/haptics.dart';
 import '../core/ui.dart';
 import '../services/hive_service.dart';
-import '../services/app_log_service.dart';
 
 class SettingsController extends GetxController {
   final HiveService _hive = Get.find<HiveService>();
@@ -21,10 +18,7 @@ class SettingsController extends GetxController {
   final openaiKey = ''.obs;
   final anthropicKey = ''.obs;
   final googleKey = ''.obs;
-  final kimiKey = ''.obs;
-  final nvidiaKey = ''.obs;
   final openRouterKey = ''.obs;
-  final deepSeekKey = ''.obs;
   final customCloudName = 'Custom API'.obs;
   final customCloudBaseUrl = ''.obs;
   final customCloudKey = ''.obs;
@@ -33,14 +27,9 @@ class SettingsController extends GetxController {
   final openaiModel = 'gpt-5.2'.obs;
   final anthropicModel = 'claude-sonnet-4-6'.obs;
   final googleModel = 'gemini-2.5-flash'.obs;
-  final kimiModel = 'kimi-k2.6'.obs;
-  final nvidiaModel = 'meta/llama-3.1-8b-instruct'.obs;
   final openRouterModel = 'openai/gpt-4o-mini'.obs;
-  final deepSeekModel = 'deepseek-v4-flash'.obs;
   final customCloudModel = ''.obs;
   final globalSystemPrompt = AppConstants.systemPrompt.obs;
-  final nvidiaModels = <String>[].obs;
-  final isLoadingNvidiaModels = false.obs;
   final temperature = 0.1.obs;
   final maxTokens = 512.obs;
   final contextSize = 2048.obs;
@@ -54,10 +43,7 @@ class SettingsController extends GetxController {
   final openaiKeyController = TextEditingController();
   final anthropicKeyController = TextEditingController();
   final googleKeyController = TextEditingController();
-  final kimiKeyController = TextEditingController();
-  final nvidiaKeyController = TextEditingController();
   final openRouterKeyController = TextEditingController();
-  final deepSeekKeyController = TextEditingController();
   final customCloudNameController = TextEditingController();
   final customCloudBaseUrlController = TextEditingController();
   final customCloudKeyController = TextEditingController();
@@ -70,10 +56,7 @@ class SettingsController extends GetxController {
   final openaiModelController = TextEditingController();
   final anthropicModelController = TextEditingController();
   final googleModelController = TextEditingController();
-  final kimiModelController = TextEditingController();
-  final nvidiaModelController = TextEditingController();
   final openRouterModelController = TextEditingController();
-  final deepSeekModelController = TextEditingController();
   final customCloudModelController = TextEditingController();
 
   Timer? _apiKeyDebounceTimer;
@@ -100,10 +83,7 @@ class SettingsController extends GetxController {
     openaiKeyController.dispose();
     anthropicKeyController.dispose();
     googleKeyController.dispose();
-    kimiKeyController.dispose();
-    nvidiaKeyController.dispose();
     openRouterKeyController.dispose();
-    deepSeekKeyController.dispose();
     customCloudNameController.dispose();
     customCloudBaseUrlController.dispose();
     customCloudKeyController.dispose();
@@ -112,10 +92,7 @@ class SettingsController extends GetxController {
     openaiModelController.dispose();
     anthropicModelController.dispose();
     googleModelController.dispose();
-    kimiModelController.dispose();
-    nvidiaModelController.dispose();
     openRouterModelController.dispose();
-    deepSeekModelController.dispose();
     customCloudModelController.dispose();
     _apiKeyDebounceTimer?.cancel();
     _modelDebounceTimer?.cancel();
@@ -134,10 +111,7 @@ class SettingsController extends GetxController {
     openaiKey.value = _hive.getSetting(AppConstants.keyOpenaiKey) ?? '';
     anthropicKey.value = _hive.getSetting(AppConstants.keyAnthropicKey) ?? '';
     googleKey.value = _hive.getSetting(AppConstants.keyGoogleKey) ?? '';
-    kimiKey.value = _hive.getSetting(AppConstants.keyKimiKey) ?? '';
-    nvidiaKey.value = _hive.getSetting(AppConstants.keyNvidiaKey) ?? '';
     openRouterKey.value = _hive.getSetting(AppConstants.keyOpenRouterKey) ?? '';
-    deepSeekKey.value = _hive.getSetting(AppConstants.keyDeepSeekKey) ?? '';
     customCloudName.value = _hive.getSetting(AppConstants.keyCustomCloudName,
             defaultValue: 'Custom API') ??
         'Custom API';
@@ -154,18 +128,9 @@ class SettingsController extends GetxController {
     googleModel.value = _hive.getSetting(AppConstants.keyGoogleModel,
             defaultValue: 'gemini-2.5-flash') ??
         'gemini-2.5-flash';
-    kimiModel.value = _hive.getSetting(AppConstants.keyKimiModel,
-            defaultValue: 'kimi-k2.6') ??
-        'kimi-k2.6';
-    nvidiaModel.value = _hive.getSetting(AppConstants.keyNvidiaModel,
-            defaultValue: 'meta/llama-3.1-8b-instruct') ??
-        'meta/llama-3.1-8b-instruct';
     openRouterModel.value = _hive.getSetting(AppConstants.keyOpenRouterModel,
             defaultValue: 'openai/gpt-4o-mini') ??
         'openai/gpt-4o-mini';
-    deepSeekModel.value = _hive.getSetting(AppConstants.keyDeepSeekModel,
-            defaultValue: 'deepseek-v4-flash') ??
-        'deepseek-v4-flash';
     customCloudModel.value =
         _hive.getSetting(AppConstants.keyCustomCloudModel) ?? '';
     _loadCustomCloudProfiles();
@@ -200,10 +165,7 @@ class SettingsController extends GetxController {
     openaiKeyController.text = openaiKey.value;
     anthropicKeyController.text = anthropicKey.value;
     googleKeyController.text = googleKey.value;
-    kimiKeyController.text = kimiKey.value;
-    nvidiaKeyController.text = nvidiaKey.value;
     openRouterKeyController.text = openRouterKey.value;
-    deepSeekKeyController.text = deepSeekKey.value;
     customCloudNameController.text = customCloudName.value;
     customCloudBaseUrlController.text = customCloudBaseUrl.value;
     customCloudKeyController.text = customCloudKey.value;
@@ -218,10 +180,7 @@ class SettingsController extends GetxController {
     openaiModelController.text = openaiModel.value;
     anthropicModelController.text = anthropicModel.value;
     googleModelController.text = googleModel.value;
-    kimiModelController.text = kimiModel.value;
-    nvidiaModelController.text = nvidiaModel.value;
     openRouterModelController.text = openRouterModel.value;
-    deepSeekModelController.text = deepSeekModel.value;
     customCloudModelController.text = customCloudModel.value;
   }
 
@@ -231,14 +190,8 @@ class SettingsController extends GetxController {
         return anthropicKeyController;
       case 'google':
         return googleKeyController;
-      case 'kimi':
-        return kimiKeyController;
-      case 'nvidia':
-        return nvidiaKeyController;
       case 'openrouter':
         return openRouterKeyController;
-      case 'deepseek':
-        return deepSeekKeyController;
       case 'custom':
         return customCloudKeyController;
       default:
@@ -252,14 +205,8 @@ class SettingsController extends GetxController {
         return anthropicModelController;
       case 'google':
         return googleModelController;
-      case 'kimi':
-        return kimiModelController;
-      case 'nvidia':
-        return nvidiaModelController;
       case 'openrouter':
         return openRouterModelController;
-      case 'deepseek':
-        return deepSeekModelController;
       case 'custom':
         return customCloudModelController;
       default:
@@ -273,14 +220,8 @@ class SettingsController extends GetxController {
         return anthropicModel.value;
       case 'google':
         return googleModel.value;
-      case 'kimi':
-        return kimiModel.value;
-      case 'nvidia':
-        return nvidiaModel.value;
       case 'openrouter':
         return openRouterModel.value;
-      case 'deepseek':
-        return deepSeekModel.value;
       case 'custom':
         return customCloudModel.value;
       default:
@@ -316,26 +257,10 @@ class SettingsController extends GetxController {
         googleKeyController.text = trimmed;
         await _hive.setSetting(AppConstants.keyGoogleKey, trimmed);
         break;
-      case 'kimi':
-        kimiKey.value = trimmed;
-        kimiKeyController.text = trimmed;
-        await _hive.setSetting(AppConstants.keyKimiKey, trimmed);
-        break;
-      case 'nvidia':
-        nvidiaKey.value = trimmed;
-        nvidiaKeyController.text = trimmed;
-        await _hive.setSetting(AppConstants.keyNvidiaKey, trimmed);
-        await refreshNvidiaModels();
-        break;
       case 'openrouter':
         openRouterKey.value = trimmed;
         openRouterKeyController.text = trimmed;
         await _hive.setSetting(AppConstants.keyOpenRouterKey, trimmed);
-        break;
-      case 'deepseek':
-        deepSeekKey.value = trimmed;
-        deepSeekKeyController.text = trimmed;
-        await _hive.setSetting(AppConstants.keyDeepSeekKey, trimmed);
         break;
       case 'custom':
         customCloudKey.value = trimmed;
@@ -373,25 +298,10 @@ class SettingsController extends GetxController {
         googleModelController.text = model;
         await _hive.setSetting(AppConstants.keyGoogleModel, model);
         break;
-      case 'kimi':
-        kimiModel.value = model;
-        kimiModelController.text = model;
-        await _hive.setSetting(AppConstants.keyKimiModel, model);
-        break;
-      case 'nvidia':
-        nvidiaModel.value = model;
-        nvidiaModelController.text = model;
-        await _hive.setSetting(AppConstants.keyNvidiaModel, model);
-        break;
       case 'openrouter':
         openRouterModel.value = model;
         openRouterModelController.text = model;
         await _hive.setSetting(AppConstants.keyOpenRouterModel, model);
-        break;
-      case 'deepseek':
-        deepSeekModel.value = model;
-        deepSeekModelController.text = model;
-        await _hive.setSetting(AppConstants.keyDeepSeekModel, model);
         break;
       case 'custom':
         customCloudModel.value = model;
@@ -583,35 +493,6 @@ class SettingsController extends GetxController {
       return AppConstants.uncensoredSystemPrompt;
     }
     return AppConstants.systemPrompt;
-  }
-
-  Future<void> refreshNvidiaModels() async {
-    if (nvidiaKey.value.trim().isEmpty) return;
-    isLoadingNvidiaModels.value = true;
-    try {
-      final response = await http.get(
-        Uri.parse('${AppConstants.nvidiaEndpoint}/models'),
-        headers: {'Authorization': 'Bearer ${nvidiaKey.value.trim()}'},
-      ).timeout(const Duration(seconds: 20));
-      if (response.statusCode != 200) {
-        Get.find<AppLogService>().warning(
-          'NVIDIA model list request failed',
-          details: '${response.statusCode}: ${response.body}',
-        );
-        return;
-      }
-      final data = jsonDecode(response.body);
-      final rawModels = data['data'] as List? ?? [];
-      nvidiaModels.value = rawModels
-          .map((model) => model is Map ? model['id']?.toString() : null)
-          .whereType<String>()
-          .toList();
-    } catch (e) {
-      Get.find<AppLogService>()
-          .warning('NVIDIA model list request failed', details: e);
-    } finally {
-      isLoadingNvidiaModels.value = false;
-    }
   }
 
   void debouncedSetCloudModel(String provider, String model) {

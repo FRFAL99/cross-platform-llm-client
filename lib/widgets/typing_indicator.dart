@@ -1,7 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../services/inference_service.dart';
 
 class TypingIndicator extends StatefulWidget {
@@ -87,7 +86,7 @@ class _TypingIndicatorState extends State<TypingIndicator>
               if (inference.tokenCount.value > 0) {
                 return Text(
                   '${inference.tokenCount.value} tokens',
-                  style: GoogleFonts.inter(
+                  style: TextStyle(fontFamily: 'Inter',
                     fontSize: 11,
                     color: Theme.of(context).hintColor,
                     fontWeight: FontWeight.w400,
@@ -96,7 +95,7 @@ class _TypingIndicatorState extends State<TypingIndicator>
               }
               return Text(
                 'thinking…',
-                style: GoogleFonts.inter(
+                style: TextStyle(fontFamily: 'Inter',
                   fontSize: 12,
                   color: Theme.of(context).hintColor,
                   fontWeight: FontWeight.w400,
