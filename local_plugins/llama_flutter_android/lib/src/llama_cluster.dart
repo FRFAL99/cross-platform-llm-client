@@ -61,6 +61,22 @@ class ClusterWorker {
       };
 }
 
+/// Result of [LlamaCluster.checkWorker].
+enum ClusterCheck {
+  ok,
+  unreachable,
+  wrongCode,
+
+  /// Not a PrivateLM worker, or one running an older version of the app.
+  oldVersion,
+
+  /// Serving another master right now.
+  busy,
+
+  /// This build has no cluster support.
+  unsupported,
+}
+
 /// State of this phone's worker service.
 class ClusterWorkerStatus {
   /// starting, running, stopped or error.
@@ -110,10 +126,36 @@ class LlamaCluster {
   static const _channel = MethodChannel('llama_flutter_android/cluster');
   static const defaultPort = 50052;
 
-  /// Starts serving this phone's CPU to a master, in a foreground service
-  /// that keeps running in the background.
-  static Future<void> startWorker({int port = defaultPort, int? threads}) =>
-      _channel.invokeMethod('startWorker', {'port': port, 'threads': threads});
+  /// Starts serving this phone's CPU to a master that knows [code] (its
+  /// pairing code), in a foreground service that keeps running in the
+  /// background.
+  static Future<void> startWorker(
+          {required String code, int port = defaultPort, int? threads}) =>
+      _channel.invokeMethod(
+          'startWorker', {'port': port, 'threads': threads, 'code': code});
+
+  /// Prefix of the generation error when a worker stops answering. The
+  /// worker's endpoint follows it; the model must be reloaded.
+  static const lostWorkerError = 'CLUSTER_WORKER_LOST:';
+
+  /// Connects to the worker at [endpoint] and checks [code], its pairing
+  /// code. Safe to call any time (a wrong code can't crash the app).
+  static Future<ClusterCheck> checkWorker(String endpoint, String code,
+      {Duration timeout = const Duration(seconds: 3)}) async {
+    final status = await _channel.invokeMethod<int>('checkWorker', {
+      'endpoint': endpoint,
+      'code': code,
+      'timeoutMs': timeout.inMilliseconds,
+    });
+    return switch (status) {
+      0 => ClusterCheck.ok,
+      2 => ClusterCheck.wrongCode,
+      3 => ClusterCheck.oldVersion,
+      4 => ClusterCheck.busy,
+      5 => ClusterCheck.unsupported,
+      _ => ClusterCheck.unreachable,
+    };
+  }
 
   static Future<void> stopWorker() => _channel.invokeMethod('stopWorker');
 
@@ -185,17 +227,21 @@ class LlamaCluster {
 
   /// Uses [workers] for the next GGUF model load. Layers are split by
   /// [weights] (one per worker, e.g. MB to hold), with this phone keeping a
-  /// share by [localWeight]. Throws a [PlatformException] (code UNREACHABLE)
-  /// if any worker doesn't answer. An empty list turns cluster mode off.
+  /// share by [localWeight]. [codes] are the workers' pairing codes. Throws
+  /// a [PlatformException] if a worker doesn't accept its code right now:
+  /// code UNREACHABLE, WRONG_CODE, OLD_WORKER or BUSY, with the endpoint as
+  /// its message. An empty list turns cluster mode off.
   static Future<void> setCluster(
     List<ClusterWorker> workers, {
     List<double>? weights,
     double localWeight = 1.0,
+    List<String>? codes,
   }) =>
       _channel.invokeMethod('setCluster', {
         'endpoints': [for (final w in workers) w.endpoint],
         'weights': weights ?? List.filled(workers.length, 1.0),
         'localWeight': localWeight,
+        'codes': codes ?? List.filled(workers.length, ''),
       });
 
   static Future<void> clear() => setCluster(const []);

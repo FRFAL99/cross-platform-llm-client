@@ -53,6 +53,10 @@ static bool g_capture_load_error = false;
 static std::string g_load_buffers;
 // Cluster worker: address of the master currently connected, empty if none.
 static std::string g_worker_peer;
+// Cluster master: set when a worker stops answering mid-generation (ggml-rpc
+// logs "RPC worker lost"); the model then has to be reloaded without it.
+static std::atomic<bool> g_cluster_lost{false};
+static std::string g_cluster_lost_endpoint;  // guarded by g_load_log_mutex
 
 // ---------------------------------------------------------------------------
 // Runtime backend loading (GGML_BACKEND_DL)
@@ -230,6 +234,7 @@ static ggml_backend_dev_t firstGpuDevice() {
 // ---------------------------------------------------------------------------
 static std::vector<std::string> g_cluster_endpoints;
 static std::vector<float> g_cluster_weights;  // one per endpoint
+static std::vector<std::string> g_cluster_codes;  // pairing code per endpoint
 static float g_cluster_local_weight = 0.0f;
 static std::vector<std::string> g_registered_endpoints;
 
@@ -277,12 +282,14 @@ struct ClusterPlan {
 static std::string planCluster(const char* model_path, ClusterPlan& plan) {
     std::vector<std::string> endpoints;
     std::vector<float> weights;
+    std::vector<std::string> codes;
     float local_weight;
     ggml_backend_reg_t rpc;
     {
         std::lock_guard<std::mutex> lock(g_backend_mutex);
         endpoints = g_cluster_endpoints;
         weights = g_cluster_weights;
+        codes = g_cluster_codes;
         local_weight = g_cluster_local_weight;
         rpc = loadRpcBackendLocked();
     }
@@ -291,6 +298,13 @@ static std::string planCluster(const char* model_path, ClusterPlan& plan) {
     auto add_server = reinterpret_cast<add_server_fn>(
         ggml_backend_reg_get_proc_address(rpc, "ggml_backend_rpc_add_server"));
     if (!add_server) return "RPC backend is missing ggml_backend_rpc_add_server";
+    using set_code_fn = void (*)(const char*, const char*);
+    auto set_code = reinterpret_cast<set_code_fn>(
+        ggml_backend_reg_get_proc_address(rpc, "ggml_backend_rpc_set_client_code"));
+    if (!set_code) return "RPC backend has no pairing support";
+    for (size_t i = 0; i < endpoints.size(); i++) {
+        set_code(endpoints[i].c_str(), i < codes.size() ? codes[i].c_str() : "");
+    }
 
     const int n_layer = readBlockCount(model_path);
     if (n_layer <= 0) return "Could not read the model's layer count";
@@ -298,8 +312,9 @@ static std::string planCluster(const char* model_path, ClusterPlan& plan) {
     float remote_weight = 0.0f;
     std::vector<float> device_weights;
     for (size_t i = 0; i < endpoints.size(); i++) {
-        // Aborts the process if the worker can't be reached, so the app
-        // probes each worker over TCP before calling setCluster.
+        // Aborts the process if the worker can't be reached or rejects the
+        // pairing code, so the app checks each worker (nativeCheckWorker)
+        // right before calling setCluster.
         ggml_backend_reg_t reg = add_server(endpoints[i].c_str());
         if (!reg) return "Worker " + endpoints[i] + " reported no devices";
         if (std::find(g_registered_endpoints.begin(), g_registered_endpoints.end(),
@@ -346,10 +361,11 @@ static std::string planCluster(const char* model_path, ClusterPlan& plan) {
 extern "C" JNIEXPORT void JNICALL
 Java_com_write4me_llama_1flutter_1android_ClusterNative_nativeSetCluster(
         JNIEnv* env, jobject /* this */, jobjectArray endpoints, jfloatArray weights,
-        jfloat local_weight) {
+        jfloat local_weight, jobjectArray codes) {
     std::lock_guard<std::mutex> lock(g_backend_mutex);
     g_cluster_endpoints.clear();
     g_cluster_weights.clear();
+    g_cluster_codes.clear();
     g_cluster_local_weight = local_weight;
     const jsize n = endpoints ? env->GetArrayLength(endpoints) : 0;
     const jsize n_weights = weights ? env->GetArrayLength(weights) : 0;
@@ -360,8 +376,35 @@ Java_com_write4me_llama_1flutter_1android_ClusterNative_nativeSetCluster(
         g_cluster_endpoints.push_back(jstringToStd(env, item));
         g_cluster_weights.push_back(i < n_weights ? w[i] : 1.0f);
         env->DeleteLocalRef(item);
+        jstring code = codes && i < env->GetArrayLength(codes)
+            ? static_cast<jstring>(env->GetObjectArrayElement(codes, i)) : nullptr;
+        g_cluster_codes.push_back(jstringToStd(env, code));
+        if (code) env->DeleteLocalRef(code);
     }
     LOGI("Cluster set: %zu worker(s)", g_cluster_endpoints.size());
+}
+
+/// Master: connects to a worker and checks its pairing code without risking
+/// an abort. 0 ok, 1 unreachable, 2 wrong code, 3 not a PrivateLM worker or
+/// an older version, 4 busy with another master, 5 no cluster support.
+extern "C" JNIEXPORT jint JNICALL
+Java_com_write4me_llama_1flutter_1android_ClusterNative_nativeCheckWorker(
+        JNIEnv* env, jobject /* this */, jstring lib_dir, jstring endpoint, jstring code,
+        jint timeout_ms) {
+    ggml_backend_reg_t rpc;
+    {
+        std::lock_guard<std::mutex> lock(g_backend_mutex);
+        if (g_lib_dir.empty()) g_lib_dir = jstringToStd(env, lib_dir);
+        rpc = loadRpcBackendLocked();
+    }
+    if (!rpc) return 5;
+    using check_fn = int (*)(const char*, const char*, int);
+    auto check = reinterpret_cast<check_fn>(
+        ggml_backend_reg_get_proc_address(rpc, "ggml_backend_rpc_check_server"));
+    if (!check) return 5;
+    const std::string ep = jstringToStd(env, endpoint);
+    const std::string c = jstringToStd(env, code);
+    return check(ep.c_str(), c.c_str(), (int)timeout_ms);
 }
 
 /// Where the last model load put its weights: "<buffer name>\t<MiB>" lines.
@@ -454,7 +497,7 @@ static std::string currentWorkerPeer() {
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_write4me_llama_1flutter_1android_ClusterNative_nativeServe(
         JNIEnv* env, jobject /* this */, jstring lib_dir, jstring endpoint,
-        jstring cache_dir, jlong n_threads) {
+        jstring cache_dir, jlong n_threads, jstring code) {
     ggml_backend_reg_t rpc;
     ggml_backend_dev_t cpu;
     {
@@ -471,6 +514,15 @@ Java_com_write4me_llama_1flutter_1android_ClusterNative_nativeServe(
     auto start = reinterpret_cast<start_fn>(
         ggml_backend_reg_get_proc_address(rpc, "ggml_backend_rpc_start_server"));
     if (!start) return env->NewStringUTF("RPC backend is missing its server");
+    using set_code_fn = void (*)(const char*);
+    auto set_code = reinterpret_cast<set_code_fn>(
+        ggml_backend_reg_get_proc_address(rpc, "ggml_backend_rpc_set_server_code"));
+    const std::string pairing = jstringToStd(env, code);
+    // Never serve without a code: anyone on the network could use the phone.
+    if (!set_code || pairing.empty()) {
+        return env->NewStringUTF("Worker needs a pairing code");
+    }
+    set_code(pairing.c_str());
 
     const std::string ep = jstringToStd(env, endpoint);
     const std::string cache = jstringToStd(env, cache_dir);
@@ -538,6 +590,15 @@ static void androidLlamaLog(ggml_log_level level, const char* text, void*) {
     } else if (std::strncmp(text, "RPC client disconnected", 23) == 0) {
         g_worker_peer.clear();
     }
+    static const char kLost[] = "RPC worker lost: ";
+    if (std::strncmp(text, kLost, sizeof(kLost) - 1) == 0) {
+        g_cluster_lost_endpoint.assign(text + sizeof(kLost) - 1);
+        while (!g_cluster_lost_endpoint.empty() &&
+               std::isspace((unsigned char)g_cluster_lost_endpoint.back())) {
+            g_cluster_lost_endpoint.pop_back();
+        }
+        g_cluster_lost = true;
+    }
     if (!g_capture_load_error) return;
     if (level == GGML_LOG_LEVEL_ERROR) {
         g_load_error.assign(text);
@@ -557,6 +618,18 @@ static std::string consumeLoadError() {
         g_load_error.pop_back();
     }
     return g_load_error;
+}
+
+/// A cluster worker stopped answering: the model is missing layers until it
+/// is reloaded. Dart matches the "CLUSTER_WORKER_LOST:" prefix.
+static void throwClusterLost(JNIEnv* env) {
+    std::string endpoint;
+    {
+        std::lock_guard<std::mutex> lock(g_load_log_mutex);
+        endpoint = g_cluster_lost_endpoint;
+    }
+    jclass exception = env->FindClass("java/lang/RuntimeException");
+    env->ThrowNew(exception, ("CLUSTER_WORKER_LOST:" + endpoint).c_str());
 }
 
 static void throwLoadError(JNIEnv* env, const std::string& message) {
@@ -736,6 +809,7 @@ Java_com_write4me_llama_1flutter_1android_LlamaFlutterAndroidPlugin_nativeLoadMo
         throwLoadError(env, "GGUF model path is missing");
         return;
     }
+    g_cluster_lost = false;
 
     const char* model_path = env->GetStringUTFChars(path, nullptr);
     if (!model_path) {
@@ -1223,6 +1297,8 @@ Java_com_write4me_llama_1flutter_1android_LlamaFlutterAndroidPlugin_nativeGenera
     // Generation loop
     LOGI("Starting generation loop: max_tokens=%lld", max_tokens);
     for (int i = 0; i < max_tokens && !g_stop_flag; i++) {
+        // A dropped worker leaves garbage logits: never sample from them.
+        if (g_cluster_lost) break;
         llama_token new_token_id = llama_sampler_sample(g_sampler, g_ctx, -1);
 
         // Check for end of generation (EOS/EOD tokens)
@@ -1278,6 +1354,11 @@ Java_com_write4me_llama_1flutter_1android_LlamaFlutterAndroidPlugin_nativeGenera
     
     llama_batch_free(batch);
     env->DeleteLocalRef(callbackClass);
+    if (g_cluster_lost) {
+        g_cached_tokens.clear();
+        g_n_past = 0;
+        throwClusterLost(env);
+    }
 }
 
 extern "C" JNIEXPORT void JNICALL

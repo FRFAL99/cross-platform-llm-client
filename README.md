@@ -24,7 +24,10 @@ If you installed the upstream PrivateLM before, uninstall it first: it uses the 
 ## Use it
 
 - **Models**: download a GGUF model from the catalogue (Hugging Face) or import a `.gguf` file, then load it.
-- **Phone cluster** (Settings › Phone cluster): on each extra phone choose *Worker*; on the main phone choose *Master* and add each worker by the address it shows (or *Find nearby*). The next model load spreads the layers across the phones. Workers accept unauthenticated connections, so use it only on a trusted Wi-Fi.
+- **Phone cluster** (Settings › Phone cluster): on each extra phone choose *Worker*; on the main phone choose *Master* and add each worker with the address and **pairing code** it shows (or *Find nearby*, then the code). The next model load spreads the layers across the phones.
+  - Only a master that knows a worker's pairing code can use it. The phones prove they know the code with a challenge-response (HMAC-SHA256), so the code never crosses the network. The data between phones is not encrypted, so still use a Wi-Fi you trust. *New pairing code* on the worker locks out masters that knew the old one.
+  - If a worker drops out (Wi-Fi off, battery, app closed), the answer in progress stops with a message and the model reloads without that worker. A worker that vanishes without closing the connection is noticed within about 30 seconds.
+  - Workers paired with an older version show *Code* in the list: tap them and enter the code once. Workers must run this version too.
 - **API server** (Server tab): start it and point any OpenAI client at `http://<phone>:8080/v1`. Turn on network mode to reach it from other devices on the Wi-Fi; it then requires the API key shown in the app. The Server tab has copy-ready examples (curl, Python, JavaScript).
 
 ### API server
@@ -70,7 +73,7 @@ The app only goes online when you ask it to: downloading a model from Hugging Fa
 | Platform | Local Inference | Notes                                              |
 | -------- | --------------- | -------------------------------------------------- |
 | Android  | ✅ Yes          | Main target; minSdk 28                             |
-| iOS      | ✅ Yes          | Metal GPU; not built since the cleanup, can be a cluster worker |
+| iOS      | ✅ Yes          | Metal GPU; not built since the cleanup. Its cluster worker uses an older llama.cpp and can't join an Android master |
 | Web      | ❌ No           | No local inference                                 |
 
 ### iOS / iPad (Installation via AltServer)

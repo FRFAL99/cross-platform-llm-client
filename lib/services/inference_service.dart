@@ -6,6 +6,7 @@ import 'device_info_service.dart';
 import 'app_log_service.dart';
 import 'cluster_service.dart';
 import 'stop_sequence_filter.dart';
+import '../core/ui.dart' show showToast, ToastTone;
 
 // Conditionally import llama_flutter_android — only on Android
 import 'inference_android.dart' if (dart.library.html) 'inference_stub.dart'
@@ -52,6 +53,11 @@ class InferenceService extends GetxService {
   String _sessionNativeRuntime = '';
 
   String get sessionNativeRuntime => _sessionNativeRuntime;
+
+  /// What the last successful load used, to reload after a cluster worker
+  /// drops out.
+  ({String path, String? name, String? mmproj})? _lastLoad;
+  bool _recoveringCluster = false;
 
   /// The loaded GGUF model has a working vision projector (images allowed).
   bool get ggufVisionLoaded => _engine?.ggufVisionLoaded ?? false;
@@ -164,6 +170,7 @@ class InferenceService extends GetxService {
       contextTokensUsed.value = 0;
       contextTokensTotal.value = finalContextSize;
 
+      _lastLoad = (path: modelPath, name: modelName, mmproj: mmprojPath);
       await _hive.setSetting(AppConstants.keyLocalModelPath, modelPath);
       await _hive.setSetting(
           AppConstants.keyLocalModelName, loadedModelName.value);
@@ -186,6 +193,41 @@ class InferenceService extends GetxService {
       loadedBackend.value = '';
       Get.find<AppLogService>().error('Failed to load local model', details: e);
       return 'ERROR: Failed to load model — $e';
+    }
+  }
+
+  /// A worker stopped answering mid-answer: the model is missing its layers,
+  /// so reload it (the cluster plan leaves out workers that don't answer).
+  String _onClusterWorkerLost(String error) {
+    final endpoint = RegExp('${AppConstants.clusterWorkerLostError}([0-9A-Za-z.:\\-]+)')
+            .firstMatch(error)
+            ?.group(1) ??
+        'a worker';
+    final name = Get.isRegistered<ClusterService>()
+        ? Get.find<ClusterService>().nameFor(endpoint)
+        : endpoint;
+    Get.find<AppLogService>().error('Phone cluster worker lost', details: endpoint);
+    unawaited(_recoverFromLostWorker(name));
+    return 'ERROR: The phone cluster lost $name in the middle of this answer. '
+        'Reloading the model without it; try again in a moment.';
+  }
+
+  Future<void> _recoverFromLostWorker(String name) async {
+    final last = _lastLoad;
+    if (_recoveringCluster || last == null) return;
+    _recoveringCluster = true;
+    try {
+      showToast('Phone cluster', '$name stopped answering. Reloading the model…',
+          tone: ToastTone.warning);
+      final message = await loadModel(last.path, modelName: last.name, mmprojPath: last.mmproj);
+      if (message.startsWith('ERROR')) {
+        showToast('Model not reloaded', message.replaceFirst('ERROR: ', ''),
+            tone: ToastTone.error);
+      } else {
+        showToast('Model reloaded', message, tone: ToastTone.success);
+      }
+    } finally {
+      _recoveringCluster = false;
     }
   }
 
@@ -352,6 +394,9 @@ class InferenceService extends GetxService {
         }
       }
 
+      if (result.contains(AppConstants.clusterWorkerLostError)) {
+        return _onClusterWorkerLost(result);
+      }
       return finalText;
     } catch (e) {
       if (isCurrent()) {

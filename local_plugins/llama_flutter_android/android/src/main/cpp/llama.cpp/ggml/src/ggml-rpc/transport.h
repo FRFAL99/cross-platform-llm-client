@@ -22,6 +22,9 @@ struct socket_t {
 
     socket_ptr accept();
 
+    // PrivateLM patch: receive timeout in ms (0: none). TCP only.
+    void set_recv_timeout(int ms);
+
     void get_caps(uint8_t * local_caps);
     void update_caps(const uint8_t * remote_caps);
 

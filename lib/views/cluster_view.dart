@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:llama_flutter_android/llama_flutter_android.dart';
 
@@ -8,7 +9,7 @@ import '../core/ui.dart';
 import '../services/cluster_service.dart';
 
 /// Phone cluster: pick Master (runs the model) or Worker (lends this phone),
-/// and pair them by entering the worker's IP address.
+/// and pair them by entering the worker's IP address and pairing code.
 class ClusterView extends StatefulWidget {
   const ClusterView({super.key});
 
@@ -25,6 +26,7 @@ class _ClusterViewState extends State<ClusterView> {
     super.initState();
     cluster.refreshWorkerStatus();
     cluster.refreshWifiAddress();
+    cluster.ensureWorkerCode();
     if (cluster.role == ClusterRole.master) cluster.relocateWorkers();
     // Pick up Wi-Fi being turned on while this screen is open.
     _wifiTimer = Timer.periodic(
@@ -86,8 +88,8 @@ class _ClusterViewState extends State<ClusterView> {
                   'Master: the phone you chat on. It runs the model.\n'
                   'Worker: a phone that lends its memory to the master.'
               : 'Help an Android phone running PrivateLM run models too big for '
-                  'it alone: choose Worker, then enter the address it shows on '
-                  'that phone.',
+                  'it alone: choose Worker, then enter the address and pairing '
+                  'code it shows on that phone.',
           icon: Icons.hub_outlined,
         ),
       ];
@@ -132,10 +134,26 @@ class _ClusterViewState extends State<ClusterView> {
       ]);
     } else {
       body = _centered(context, [
-        Text('Enter this on the master phone', style: t.caption),
+        Text('Enter these on the master phone', style: t.caption),
         const SizedBox(height: 8),
         SelectableText(address,
             style: t.bodyStrong.copyWith(fontSize: 26, fontFamily: 'FiraCode')),
+        const SizedBox(height: 14),
+        Text('Pairing code', style: t.small),
+        const SizedBox(height: 4),
+        Row(mainAxisSize: MainAxisSize.min, children: [
+          SelectableText(cluster.workerCode.value,
+              style: t.bodyStrong.copyWith(fontSize: 22, fontFamily: 'FiraCode')),
+          IconButton(
+            tooltip: 'Copy code',
+            visualDensity: VisualDensity.compact,
+            icon: Icon(Icons.copy_rounded, size: 18, color: t.muted),
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: cluster.workerCode.value));
+              showToast('Copied', 'Pairing code copied.', tone: ToastTone.success);
+            },
+          ),
+        ]),
         const SizedBox(height: 8),
         Row(mainAxisSize: MainAxisSize.min, children: [
           StatusDot(t.green, size: 8),
@@ -171,13 +189,40 @@ class _ClusterViewState extends State<ClusterView> {
         const SizedBox(height: 16),
       ],
       AppCard(padding: const EdgeInsets.fromLTRB(16, 24, 16, 20), child: body),
+      if (!ClusterService.workerStopsWithApp && s.peer == null) ...[
+        const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: PillButton(
+            label: 'New pairing code',
+            icon: Icons.refresh_rounded,
+            onPressed: () => _confirmNewCode(context),
+          ),
+        ),
+      ],
       SectionFootnote(ClusterService.workerStopsWithApp
           ? 'Keep this device plugged in, on the same Wi-Fi, with PrivateLM open: '
               'iOS pauses apps in the background. Close PrivateLM to stop sharing.'
           : 'Keep this phone plugged in and on the same Wi-Fi, with PrivateLM '
               'open: the screen stays on while sharing, because Android slows '
-              'background work. Set Phone cluster to Off to stop.'),
+              'background work. Set Phone cluster to Off to stop. Only a master '
+              'that knows the pairing code can use this phone; data between the '
+              'phones is not encrypted, so use a network you trust.'),
     ];
+  }
+
+  Future<void> _confirmNewCode(BuildContext context) async {
+    final ok = await showAppSheet<bool>(
+      context,
+      title: 'Make a new pairing code?',
+      subtitle: 'Master phones that use the current code will need the new '
+          'one. Do this if someone you don\'t trust saw the code.',
+      builder: (ctx) => PrimaryButton(
+        label: 'New code',
+        onPressed: () => Navigator.pop(ctx, true),
+      ),
+    );
+    if (ok == true) await cluster.newWorkerCode();
   }
 
   Widget _centered(BuildContext context, List<Widget> children) =>
@@ -204,7 +249,7 @@ class _ClusterViewState extends State<ClusterView> {
             icon: Icons.devices_other_rounded,
             title: 'No workers yet',
             message: 'On each other phone, open Phone cluster, choose Worker, '
-                'then enter the address it shows.',
+                'then enter the address and pairing code it shows.',
           ),
         ])
       else
@@ -215,14 +260,19 @@ class _ClusterViewState extends State<ClusterView> {
               title: w.model ?? w.name,
               subtitle: [
                 w.endpoint,
+                if (!cluster.hasCode(w)) 'needs its pairing code',
                 if (w.ramMb != null) '${_gb(w.ramMb!)} free',
                 if (w.bandwidth != null) '${w.bandwidth!.toStringAsFixed(1)} GB/s',
               ].join(' · '),
-              trailing: IconButton(
-                icon: Icon(Icons.close_rounded, color: t.muted),
-                tooltip: 'Remove',
-                onPressed: () => cluster.remove(w),
-              ),
+              onTap: () => _enterCode(context, w),
+              trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                if (!cluster.hasCode(w)) AppTag('Code', color: t.orange),
+                IconButton(
+                  icon: Icon(Icons.close_rounded, color: t.muted),
+                  tooltip: 'Remove',
+                  onPressed: () => cluster.remove(w),
+                ),
+              ]),
             ),
         ]),
       const SectionFootnote(
@@ -250,7 +300,7 @@ class _ClusterViewState extends State<ClusterView> {
               trailing: PillButton(
                 label: 'Add',
                 primary: true,
-                onPressed: () => _report(cluster.addFound(w)),
+                onPressed: () => _addFound(context, w),
               ),
             ),
         ]),
@@ -259,30 +309,79 @@ class _ClusterViewState extends State<ClusterView> {
   }
 
   Future<void> _enterIp(BuildContext context) async {
-    final ctrl = TextEditingController();
-    final input = await showAppSheet<String>(
+    final ip = TextEditingController();
+    final code = TextEditingController();
+    final ok = await showAppSheet<bool>(
       context,
-      title: 'Enter worker IP',
-      subtitle: 'Shown on the worker phone',
+      title: 'Add a worker',
+      subtitle: 'Both are shown on the worker phone',
       builder: (ctx) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           TextField(
-            controller: ctrl,
+            controller: ip,
             autofocus: true,
             keyboardType: TextInputType.url,
             decoration: appInputDecoration(ctx,
                 hint: '192.168.1.20:${LlamaCluster.defaultPort}'),
-            onSubmitted: (v) => Navigator.pop(ctx, v),
           ),
+          const SizedBox(height: 10),
+          _codeField(ctx, code, onSubmitted: () => Navigator.pop(ctx, true)),
           const SizedBox(height: 16),
-          PrimaryButton(label: 'Add', onPressed: () => Navigator.pop(ctx, ctrl.text)),
+          PrimaryButton(label: 'Add', onPressed: () => Navigator.pop(ctx, true)),
         ],
       ),
     );
-    ctrl.dispose();
-    if (input != null) await _report(cluster.addManual(input));
+    final ipText = ip.text, codeText = code.text;
+    ip.dispose();
+    code.dispose();
+    if (ok == true) await _report(cluster.addManual(ipText, codeText));
   }
+
+  /// Asks for a worker's pairing code: to add a found worker, or for one
+  /// added before pairing codes existed (or whose code changed).
+  Future<String?> _askCode(BuildContext context, ClusterWorker w) async {
+    final code = TextEditingController();
+    final ok = await showAppSheet<bool>(
+      context,
+      title: 'Pairing code for ${w.model ?? w.name}',
+      subtitle: 'Shown under the address on the worker phone',
+      builder: (ctx) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _codeField(ctx, code, autofocus: true, onSubmitted: () => Navigator.pop(ctx, true)),
+          const SizedBox(height: 16),
+          PrimaryButton(label: 'Pair', onPressed: () => Navigator.pop(ctx, true)),
+        ],
+      ),
+    );
+    final text = code.text;
+    code.dispose();
+    return ok == true ? text : null;
+  }
+
+  Future<void> _addFound(BuildContext context, ClusterWorker w) async {
+    final code = await _askCode(context, w);
+    if (code != null) await _report(cluster.addFound(w, code));
+  }
+
+  Future<void> _enterCode(BuildContext context, ClusterWorker w) async {
+    final code = await _askCode(context, w);
+    if (code != null) await _report(cluster.setCode(w, code));
+  }
+
+  Widget _codeField(BuildContext ctx, TextEditingController ctrl,
+          {bool autofocus = false, required VoidCallback onSubmitted}) =>
+      TextField(
+        controller: ctrl,
+        autofocus: autofocus,
+        autocorrect: false,
+        enableSuggestions: false,
+        textCapitalization: TextCapitalization.characters,
+        style: AppTokens.of(ctx).mono,
+        decoration: appInputDecoration(ctx, hint: 'Pairing code, e.g. ABCD-EFGH-JK23'),
+        onSubmitted: (_) => onSubmitted(),
+      );
 
   Future<void> _report(Future<String?> adding) async {
     final error = await adding;
