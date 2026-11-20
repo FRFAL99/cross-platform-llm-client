@@ -28,8 +28,8 @@ void main() {
     Map<String, String> headers = const {},
     String? body,
   }) async {
-    final req = await client.openUrl(
-        method, Uri.parse('http://127.0.0.1:$port$path'));
+    final req =
+        await client.openUrl(method, Uri.parse('http://127.0.0.1:$port$path'));
     req.persistentConnection = false;
     headers.forEach(req.headers.set);
     if (body != null) req.write(body);
@@ -37,6 +37,31 @@ void main() {
     await res.drain<void>();
     return res;
   }
+
+  /// Like [send] but returns the status, headers and body text.
+  Future<({int status, HttpHeaders headers, String body})> call(
+    String method,
+    String path, {
+    Object? json,
+  }) async {
+    final req =
+        await client.openUrl(method, Uri.parse('http://127.0.0.1:$port$path'));
+    req.persistentConnection = false;
+    if (json != null) {
+      req.headers.contentType = ContentType.json;
+      req.write(jsonEncode(json));
+    }
+    final res = await req.close();
+    final body = await utf8.decodeStream(res);
+    return (status: res.statusCode, headers: res.headers, body: body);
+  }
+
+  /// Parses an SSE body into its JSON events (without [DONE]).
+  List<Map<String, dynamic>> sseEvents(String body) => [
+        for (final line in const LineSplitter().convert(body))
+          if (line.startsWith('data: ') && line != 'data: [DONE]')
+            jsonDecode(line.substring(6)) as Map<String, dynamic>
+      ];
 
   test('binds to loopback only by default', () async {
     await server.start(port: port);
@@ -103,7 +128,8 @@ void main() {
     setUp(() async {
       fake = FakeInference();
       Get.put<InferenceService>(fake);
-      await server.start(port: port);
+      await server.start(
+          port: port, queueTimeout: const Duration(milliseconds: 600));
     });
 
     tearDown(Get.reset);
@@ -115,8 +141,7 @@ void main() {
       expect(fake.lastMaxTokens, 7);
     });
 
-    test('passes OpenAI stop (string or list) through to the model',
-        () async {
+    test('passes OpenAI stop (string or list) through to the model', () async {
       var res = await send('POST', '/v1/chat/completions',
           headers: json,
           body: jsonEncode({
@@ -138,17 +163,221 @@ void main() {
           reason: 'non-strings dropped, at most 4 like OpenAI');
     });
 
-    test('rejects with 429 while the app is generating', () async {
+    test('waits for the model instead of failing while it is busy', () async {
+      fake.isGenerating.value = true; // e.g. the in-app chat is answering
+      final pending =
+          send('POST', '/v1/chat/completions', headers: json, body: chatBody());
+      await Future.delayed(const Duration(milliseconds: 250));
+      fake.isGenerating.value = false;
+      expect((await pending).statusCode, 200);
+    });
+
+    test('answers 429 with Retry-After when the wait times out', () async {
       fake.isGenerating.value = true;
       final res = await send('POST', '/v1/chat/completions',
           headers: json, body: chatBody());
       expect(res.statusCode, 429);
+      expect(res.headers.value('retry-after'), isNotNull);
+    });
+
+    test('serves queued requests one at a time', () async {
+      fake.tokensToEmit = 3;
+      final results = await Future.wait([
+        for (var i = 0; i < 3; i++)
+          call('POST', '/v1/chat/completions', json: {
+            'messages': [
+              {'role': 'user', 'content': 'q$i'}
+            ]
+          }),
+      ]);
+      expect(results.map((r) => r.status), everyElement(200));
+      expect(fake.maxConcurrent, 1);
+    });
+
+    test('passes temperature and top_p through and validates them', () async {
+      var res = await call('POST', '/v1/chat/completions', json: {
+        'messages': [
+          {'role': 'user', 'content': 'hi'}
+        ],
+        'temperature': 0.2,
+        'top_p': 0.5,
+      });
+      expect(res.status, 200);
+      expect(fake.lastTemperature, 0.2);
+      expect(fake.lastTopP, 0.5);
+
+      res = await call('POST', '/v1/chat/completions', json: {
+        'messages': [
+          {'role': 'user', 'content': 'hi'}
+        ],
+        'temperature': 5,
+      });
+      expect(res.status, 400);
+    });
+
+    group('tool calling', () {
+      final tools = [
+        {
+          'type': 'function',
+          'function': {
+            'name': 'get_weather',
+            'description': 'Current weather for a city',
+            'parameters': {
+              'type': 'object',
+              'properties': {
+                'city': {'type': 'string'}
+              },
+              'required': ['city'],
+            },
+          },
+        }
+      ];
+      const callText = 'Let me check.<tool_call>\n'
+          '{"name": "get_weather", "arguments": {"city": "Rome"}}\n'
+          '</tool_call>';
+
+      test('describes the tools and returns tool_calls', () async {
+        fake.reply = callText;
+        final res = await call('POST', '/v1/chat/completions', json: {
+          'messages': [
+            {'role': 'user', 'content': 'Weather in Rome?'}
+          ],
+          'tools': tools,
+        });
+        expect(res.status, 200);
+        expect(fake.lastSystemPrompt, contains('<tools>'));
+        expect(fake.lastSystemPrompt, contains('get_weather'));
+        final choice = (jsonDecode(res.body)['choices'] as List).first;
+        expect(choice['finish_reason'], 'tool_calls');
+        final message = choice['message'];
+        expect(message['content'], 'Let me check.');
+        final call0 = (message['tool_calls'] as List).single;
+        expect(call0['type'], 'function');
+        expect(call0['id'], startsWith('call_'));
+        expect(call0['function']['name'], 'get_weather');
+        expect(jsonDecode(call0['function']['arguments']), {'city': 'Rome'});
+      });
+
+      test('tool_choice none leaves tools out of the prompt', () async {
+        fake.reply = callText;
+        final res = await call('POST', '/v1/chat/completions', json: {
+          'messages': [
+            {'role': 'user', 'content': 'hi'}
+          ],
+          'tools': tools,
+          'tool_choice': 'none',
+        });
+        expect(res.status, 200);
+        expect(fake.lastSystemPrompt, isNot(contains('<tools>')));
+        final choice = (jsonDecode(res.body)['choices'] as List).first;
+        expect(choice['finish_reason'], 'stop');
+      });
+
+      test('accepts tool results and earlier calls in the history', () async {
+        fake.reply = 'It is sunny in Rome.';
+        final res = await call('POST', '/v1/chat/completions', json: {
+          'messages': [
+            {'role': 'user', 'content': 'Weather in Rome?'},
+            {
+              'role': 'assistant',
+              'content': null,
+              'tool_calls': [
+                {
+                  'id': 'call_1',
+                  'type': 'function',
+                  'function': {
+                    'name': 'get_weather',
+                    'arguments': '{"city":"Rome"}'
+                  },
+                }
+              ],
+            },
+            {
+              'role': 'tool',
+              'tool_call_id': 'call_1',
+              'content': '{"sky":"sunny"}'
+            },
+          ],
+          'tools': tools,
+        });
+        expect(res.status, 200, reason: res.body);
+        expect(fake.lastPrompt, contains('<tool_response>'));
+        expect(fake.lastPrompt, contains('sunny'));
+        expect(fake.lastHistory!.last['role'], 'assistant');
+        expect(fake.lastHistory!.last['content'], contains('<tool_call>'));
+        expect(fake.lastHistory!.last['content'], contains('"city":"Rome"'));
+      });
+
+      test('streams text but never the raw call markup', () async {
+        fake.reply = callText;
+        final res = await call('POST', '/v1/chat/completions', json: {
+          'messages': [
+            {'role': 'user', 'content': 'Weather in Rome?'}
+          ],
+          'tools': tools,
+          'stream': true,
+        });
+        expect(res.body, endsWith('data: [DONE]\n\n'));
+        final events = sseEvents(res.body);
+        final deltas = [
+          for (final e in events) (e['choices'] as List).first['delta'] as Map
+        ];
+        final text = deltas.map((d) => d['content'] ?? '').join();
+        expect(text, 'Let me check.');
+        final calls = deltas.where((d) => d['tool_calls'] != null).single;
+        final call0 = (calls['tool_calls'] as List).single;
+        expect(call0['index'], 0);
+        expect(call0['function']['name'], 'get_weather');
+        expect((events.last['choices'] as List).first['finish_reason'],
+            'tool_calls');
+      });
+
+      test('rejects malformed tools', () async {
+        final res = await call('POST', '/v1/chat/completions', json: {
+          'messages': [
+            {'role': 'user', 'content': 'hi'}
+          ],
+          'tools': [
+            {'type': 'function'}
+          ],
+        });
+        expect(res.status, 400);
+      });
+    });
+
+    test('JSON mode instructs the model and strips code fences', () async {
+      fake.reply = '```json\n{"ok": true}\n```';
+      final res = await call('POST', '/v1/chat/completions', json: {
+        'messages': [
+          {'role': 'user', 'content': 'hi'}
+        ],
+        'response_format': {'type': 'json_object'},
+      });
+      expect(res.status, 200);
+      expect(fake.lastSystemPrompt, contains('valid JSON'));
+      final content =
+          (jsonDecode(res.body)['choices'] as List).first['message']['content'];
+      expect(jsonDecode(content), {'ok': true});
+    });
+
+    test('streams a role chunk first and a finish_reason at the end', () async {
+      final res = await call('POST', '/v1/chat/completions', json: {
+        'messages': [
+          {'role': 'user', 'content': 'hi'}
+        ],
+        'stream': true,
+      });
+      final events = sseEvents(res.body);
+      expect((events.first['choices'] as List).first['delta']['role'],
+          'assistant');
+      expect((events.last['choices'] as List).first['finish_reason'], 'stop');
+      expect(res.body, endsWith('data: [DONE]\n\n'));
     });
 
     test('reports 503 when the generation is interrupted', () async {
       fake.tokensToEmit = 50;
-      final pending = send('POST', '/v1/chat/completions',
-          headers: json, body: chatBody());
+      final pending =
+          send('POST', '/v1/chat/completions', headers: json, body: chatBody());
       await Future.delayed(const Duration(milliseconds: 100));
       await fake.stopGeneration(); // e.g. the user started a chat reply
       expect((await pending).statusCode, HttpStatus.serviceUnavailable);
@@ -205,6 +434,16 @@ class FakeInference extends GetxService implements InferenceService {
 
   int? lastMaxTokens;
   List<String> lastStop = const [];
+  double? lastTemperature;
+  double? lastTopP;
+  String? lastPrompt;
+  String? lastSystemPrompt;
+  List<Map<String, String>>? lastHistory;
+
+  /// When set, emitted in a few chunks instead of the t0 t1 … tokens.
+  String? reply;
+  int _running = 0;
+  int maxConcurrent = 0;
   int stops = 0;
   Duration tokenInterval = const Duration(milliseconds: 20);
   int tokensToEmit = 3;
@@ -223,20 +462,37 @@ class FakeInference extends GetxService implements InferenceService {
     String? audioPath,
     int? maxTokens,
     List<String> stopSequences = const [],
+    double? temperature,
+    double? topP,
     void Function(String token)? onToken,
   }) async {
     lastMaxTokens = maxTokens;
     lastStop = stopSequences;
+    lastTemperature = temperature;
+    lastTopP = topP;
+    lastPrompt = prompt;
+    lastSystemPrompt = systemPrompt;
+    lastHistory = conversationHistory;
+    _running++;
+    if (_running > maxConcurrent) maxConcurrent = _running;
     isGenerating.value = true;
     generationSource.value = source;
     final stopped = _stopped = Completer<void>();
     final out = StringBuffer();
-    for (var i = 0; i < tokensToEmit && !stopped.isCompleted; i++) {
+    final tokens = reply == null
+        ? [for (var i = 0; i < tokensToEmit; i++) 't$i ']
+        : [
+            for (var i = 0; i < reply!.length; i += 4)
+              reply!.substring(i, i + 4 > reply!.length ? reply!.length : i + 4)
+          ];
+    for (final token in tokens) {
+      if (stopped.isCompleted) break;
       await Future.any([Future.delayed(tokenInterval), stopped.future]);
       if (stopped.isCompleted) break;
-      out.write('t$i ');
-      onToken?.call('t$i ');
+      out.write(token);
+      onToken?.call(token);
     }
+    _running--;
     isGenerating.value = false;
     generationSource.value = '';
     return out.toString();

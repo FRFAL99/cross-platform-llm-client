@@ -37,7 +37,7 @@ Everything runs on the user's devices. The only network calls are the ones the u
 ## Roadmap (agreed order)
 
 1. Done: cleanup and security, privacy pass (no hidden Google calls), removal of cloud providers, faster chat storage. Still open: the "uncensored" models in the catalogue; splitting huge files (`model_view.dart`, `chat_view.dart`, `model_controller.dart`).
-2. Server: make it solid for other apps (streaming, tool/function calling if the model supports it, keep running in the background, clear connection info and examples).
+2. Server: make it solid for other apps. Done: request queue, per-request sampling, tool calling via `<tool_call>` prompts (`lib/services/server/tool_calling.dart`), JSON mode, background keep-alive (wake/Wi-Fi lock), examples in the Server tab. Still open: llama.cpp grammar for strict JSON/tool output, token usage in responses, a server that survives the app being swiped away.
 3. Cluster: authentication for RPC workers, reliability when a worker drops, clearer setup.
 4. Then: on-device tokens/s benchmark (phone and cluster), context management for long chats.
 

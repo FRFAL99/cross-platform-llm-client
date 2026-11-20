@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
+import 'package:llama_flutter_android/llama_flutter_android.dart';
 
 import '../core/constants.dart';
 import '../core/ui.dart';
@@ -31,7 +33,15 @@ class ServerController extends GetxController {
   /// devices on the network can reach it and an API key is always required.
   final allowNetwork = false.obs;
 
+  /// Android: false when battery optimization may pause the server in the
+  /// background. Null where it doesn't apply.
+  final batteryUnrestricted = RxnBool();
+
   late final TextEditingController apiKeyCtrl;
+  AppLifecycleListener? _lifecycle;
+
+  static bool get _isAndroid =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
   static const int port = 8080;
 
@@ -45,6 +55,29 @@ class ServerController extends GetxController {
         _hive.getSetting<bool>(AppConstants.keyServerAllowNetwork) ?? false;
 
     apiKeyCtrl = TextEditingController(text: apiKey.value);
+    unawaited(refreshBatteryStatus());
+    // The battery prompt is a system screen: re-check when the user is back.
+    _lifecycle = AppLifecycleListener(onResume: refreshBatteryStatus);
+  }
+
+  Future<void> refreshBatteryStatus() async {
+    if (!_isAndroid) return;
+    try {
+      batteryUnrestricted.value = await LlamaCluster.isBatteryUnrestricted();
+    } catch (_) {}
+  }
+
+  /// Opens Android's prompt to let the app run without battery limits.
+  Future<void> requestBatteryUnrestricted() async {
+    if (!_isAndroid) return;
+    try {
+      await LlamaCluster.requestBatteryUnrestricted();
+    } catch (_) {}
+  }
+
+  void _setKeepAlive(bool on) {
+    if (!_isAndroid) return;
+    LlamaCluster.setServerKeepAlive(on).catchError((_) {});
   }
 
   bool get requiresApiKey => allowNetwork.value || useApiKey.value;
@@ -92,6 +125,7 @@ class ServerController extends GetxController {
       localUrl.value = _server.localUrl;
       isRunning.value = true;
       serverStatus.value = 'Server running';
+      _setKeepAlive(true);
       if (allowNetwork.value && Get.isRegistered<ClusterService>()) {
         Get.find<ClusterService>().serving.value = true;
       }
@@ -108,6 +142,7 @@ class ServerController extends GetxController {
   Future<void> stopServer() async {
     isStarting.value = false;
     await _server.stop();
+    _setKeepAlive(false);
     isRunning.value = false;
     localUrl.value = null;
     serverStatus.value = 'Server stopped';
@@ -169,7 +204,7 @@ class ServerController extends GetxController {
   String _newApiKey() {
     final random = Random.secure();
     final bytes = List<int>.generate(24, (_) => random.nextInt(256));
-    return 'aichat_${bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}';
+    return 'privatelm_${bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}';
   }
 
   Future<void> copyText(String text, String label) async {
@@ -181,9 +216,16 @@ class ServerController extends GetxController {
 
   String get openAiBaseUrl => '$baseUrl/v1';
 
+  /// The key clients should send, or a placeholder when none is required
+  /// (OpenAI SDKs refuse an empty key).
+  String get clientApiKey => requiresApiKey && apiKey.value.trim().isNotEmpty
+      ? apiKey.value.trim()
+      : 'not-needed';
+
   @override
   void onClose() {
     apiKeyCtrl.dispose();
+    _lifecycle?.dispose();
     unawaited(stopServer());
     super.onClose();
   }

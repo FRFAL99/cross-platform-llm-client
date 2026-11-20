@@ -10,10 +10,20 @@ import 'package:path_provider/path_provider.dart';
 import '../controllers/settings_controller.dart';
 import '../core/constants.dart';
 import 'inference_service.dart';
+import 'server/tool_calling.dart';
 
 class OpenAiServerService {
   HttpServer? _server;
   bool _busy = false;
+
+  /// Requests waiting for the model, oldest first. One model generates one
+  /// answer at a time, so requests queue instead of failing straight away.
+  final List<int> _queue = [];
+  int _nextTicket = 0;
+  Duration _queueTimeout = defaultQueueTimeout;
+
+  static const Duration defaultQueueTimeout = Duration(minutes: 5);
+  static const int maxQueuedRequests = 8;
   String? _apiKey;
   void Function(String)? _onLog;
 
@@ -37,9 +47,11 @@ class OpenAiServerService {
     int port = 8080,
     String? apiKey,
     bool allowNetwork = false,
+    Duration queueTimeout = defaultQueueTimeout,
     void Function(String)? onLog,
   }) async {
     if (_server != null) return;
+    _queueTimeout = queueTimeout;
     if (allowNetwork && (apiKey == null || apiKey.trim().isEmpty)) {
       throw ArgumentError('An API key is required for network access.');
     }
@@ -65,6 +77,7 @@ class OpenAiServerService {
     _server = null;
     await server?.close(force: true);
     _busy = false;
+    _queue.clear();
     _onLog?.call('Server stopped');
   }
 
@@ -177,7 +190,7 @@ class OpenAiServerService {
     final inference = Get.find<InferenceService>();
     final hasModel = inference.isModelLoaded.value;
     await _json(request, {
-      'server': 'AI Chat Local OpenAI API',
+      'server': 'PrivateLM',
       'running': true,
       'model': hasModel ? inference.loadedModelName.value : null,
       'runtime': inference.loadedModelRuntime.value,
@@ -186,6 +199,8 @@ class OpenAiServerService {
         'image': hasModel && inference.ggufVisionLoaded,
         'audio': false,
         'streaming': hasModel,
+        'tools': hasModel,
+        'json_mode': hasModel,
         'gguf': hasModel,
       },
     });
@@ -204,7 +219,8 @@ class OpenAiServerService {
       if (model != null &&
           model.isNotEmpty &&
           model != inference.loadedModelName.value) {
-        _onLog?.call('Request for "$model"; serving ${inference.loadedModelName.value}');
+        _onLog?.call(
+            'Request for "$model"; serving ${inference.loadedModelName.value}');
       }
 
       final parsed = await _parseChatRequest(body, tempFiles);
@@ -214,29 +230,37 @@ class OpenAiServerService {
         return;
       }
 
-      final maxTokens = _maxTokens(body);
-      final stop = _stop(body);
+      final sampling = _sampling(body);
+      if (sampling.error != null) {
+        await _json(request, {'error': sampling.error},
+            status: HttpStatus.badRequest);
+        return;
+      }
+      final systemPrompt = _chatSystemPrompt(
+          parsed, _defaultSystemPrompt(inference.loadedModelName.value));
       if (body['stream'] == true) {
-        await _streamChatResponse(request, inference, parsed, maxTokens, stop);
+        await _streamChatResponse(
+            request, inference, parsed, systemPrompt, sampling);
       } else {
         final stopsBefore = inference.stopCount;
         final text = await inference.generate(
           prompt: parsed.prompt,
-          systemPrompt: parsed.systemPrompt ??
-              _defaultSystemPrompt(inference.loadedModelName.value),
+          systemPrompt: systemPrompt,
           conversationHistory: parsed.history,
           source: 'server',
           imagePath: parsed.imagePath,
           audioPath: parsed.audioPath,
-          maxTokens: maxTokens,
-          stopSequences: stop,
+          maxTokens: sampling.maxTokens,
+          stopSequences: sampling.stop,
+          temperature: sampling.temperature,
+          topP: sampling.topP,
         );
         if (inference.stopCount != stopsBefore) {
           await _interrupted(request);
           return;
         }
-        await _json(
-            request, _chatResponse(inference.loadedModelName.value, text));
+        await _json(request,
+            _chatResponse(inference.loadedModelName.value, text, parsed));
       }
     } finally {
       _busy = false;
@@ -244,9 +268,10 @@ class OpenAiServerService {
     }
   }
 
-  /// Claims the model for one request. Rejects before the body is read when
-  /// a server request or an in-app generation is already running, and marks
-  /// the server busy synchronously so concurrent requests can't both pass.
+  /// Claims the model for one request. While another server request or an
+  /// in-app generation is running, waits in a first-come queue (up to the
+  /// queue timeout) before the body is read. The server is marked busy
+  /// synchronously so concurrent requests can't both pass.
   Future<bool> _acquire(HttpRequest request, InferenceService inference) async {
     final modelError = _localModelError(inference);
     if (modelError != null) {
@@ -254,17 +279,44 @@ class OpenAiServerService {
           status: HttpStatus.badRequest);
       return false;
     }
-    if (_busy || inference.isGenerating.value) {
-      await _json(request, {'error': 'Model is busy'}, status: 429);
+    if (!_busy && !inference.isGenerating.value && _queue.isEmpty) {
+      _busy = true;
+      return true;
+    }
+    if (_queue.length >= maxQueuedRequests) {
+      await _busyResponse(request, 'Too many requests are waiting');
       return false;
     }
-    _busy = true;
-    return true;
+    final ticket = _nextTicket++;
+    _queue.add(ticket);
+    final deadline = DateTime.now().add(_queueTimeout);
+    try {
+      while (_busy || inference.isGenerating.value || _queue.first != ticket) {
+        if (_server == null || !_queue.contains(ticket)) return false;
+        if (DateTime.now().isAfter(deadline)) {
+          await _busyResponse(request, 'Model is busy');
+          return false;
+        }
+        await Future.delayed(const Duration(milliseconds: 100));
+      }
+      _busy = true;
+      return true;
+    } finally {
+      _queue.remove(ticket);
+    }
+  }
+
+  Future<void> _busyResponse(HttpRequest request, String message) {
+    request.response.headers.set(HttpHeaders.retryAfterHeader, '5');
+    return _json(request, {'error': message}, status: 429);
   }
 
   Future<void> _interrupted(HttpRequest request) => _json(
         request,
-        {'error': 'Generation was interrupted (the app started its own response)'},
+        {
+          'error':
+              'Generation was interrupted (the app started its own response)'
+        },
         status: HttpStatus.serviceUnavailable,
       );
 
@@ -273,7 +325,11 @@ class OpenAiServerService {
     final raw = body['stop'];
     if (raw is String) return raw.isEmpty ? const [] : [raw];
     if (raw is List) {
-      return raw.whereType<String>().where((s) => s.isNotEmpty).take(4).toList();
+      return raw
+          .whereType<String>()
+          .where((s) => s.isNotEmpty)
+          .take(4)
+          .toList();
     }
     return const [];
   }
@@ -281,6 +337,37 @@ class OpenAiServerService {
   int? _maxTokens(Map<String, dynamic> body) {
     final raw = body['max_completion_tokens'] ?? body['max_tokens'];
     return raw is num && raw > 0 ? raw.toInt() : null;
+  }
+
+  /// OpenAI sampling options. Unset values fall back to the app settings.
+  _Sampling _sampling(Map<String, dynamic> body) {
+    final temperature = body['temperature'];
+    final topP = body['top_p'];
+    if (temperature != null &&
+        (temperature is! num || temperature < 0 || temperature > 2)) {
+      return const _Sampling.error('temperature must be between 0 and 2');
+    }
+    if (topP != null && (topP is! num || topP <= 0 || topP > 1)) {
+      return const _Sampling.error(
+          'top_p must be greater than 0 and at most 1');
+    }
+    return _Sampling(
+      maxTokens: _maxTokens(body),
+      stop: _stop(body),
+      temperature: (temperature as num?)?.toDouble(),
+      topP: (topP as num?)?.toDouble(),
+    );
+  }
+
+  /// The client's system prompt (or the app default) plus the tool list and
+  /// JSON-mode instructions the request asks for.
+  String _chatSystemPrompt(_ParsedChatRequest parsed, String fallback) {
+    final parts = <String>[parsed.systemPrompt ?? fallback];
+    if (parsed.tools.isNotEmpty && !parsed.toolChoice.disabled) {
+      parts.add(ToolCalling.systemPrompt(parsed.tools, parsed.toolChoice));
+    }
+    if (parsed.jsonInstruction != null) parts.add(parsed.jsonInstruction!);
+    return parts.where((p) => p.trim().isNotEmpty).join('\n\n');
   }
 
   Future<void> _deleteFiles(List<File> files) async {
@@ -303,19 +390,24 @@ class OpenAiServerService {
         return;
       }
 
-      final maxTokens = _maxTokens(body);
-      final stop = _stop(body);
+      final sampling = _sampling(body);
+      if (sampling.error != null) {
+        await _json(request, {'error': sampling.error},
+            status: HttpStatus.badRequest);
+        return;
+      }
       if (body['stream'] == true) {
-        await _streamCompletionResponse(
-            request, inference, prompt, maxTokens, stop);
+        await _streamCompletionResponse(request, inference, prompt, sampling);
       } else {
         final stopsBefore = inference.stopCount;
         final text = await inference.generate(
           prompt: prompt,
           systemPrompt: _defaultSystemPrompt(inference.loadedModelName.value),
           source: 'server',
-          maxTokens: maxTokens,
-          stopSequences: stop,
+          maxTokens: sampling.maxTokens,
+          stopSequences: sampling.stop,
+          temperature: sampling.temperature,
+          topP: sampling.topP,
         );
         if (inference.stopCount != stopsBefore) {
           await _interrupted(request);
@@ -352,9 +444,22 @@ class OpenAiServerService {
       return _ParsedChatRequest.error('messages must be a non-empty array');
     }
 
+    late final List<ToolSpec> tools;
+    late final ToolChoice toolChoice;
+    try {
+      tools = ToolCalling.parseTools(body['tools']);
+      toolChoice = ToolCalling.parseToolChoice(body['tool_choice'], tools);
+    } on FormatException catch (e) {
+      return _ParsedChatRequest.error(e.message);
+    }
+    final jsonInstruction = _jsonInstruction(body['response_format']);
+    if (jsonInstruction is _Invalid) {
+      return _ParsedChatRequest.error(jsonInstruction.message);
+    }
+
     final systemParts = <String>[];
     final history = <Map<String, String>>[];
-    var lastUserText = '';
+    var lastText = '';
     String? imagePath;
     String? audioPath;
 
@@ -363,11 +468,15 @@ class OpenAiServerService {
       if (raw is! Map) {
         return _ParsedChatRequest.error('message[$i] must be an object');
       }
-      final role = '${raw['role'] ?? ''}';
-      if (role != 'system' && role != 'user' && role != 'assistant') {
+      var role = '${raw['role'] ?? ''}';
+      if (role == 'developer') role = 'system';
+      if (!const {'system', 'user', 'assistant', 'tool'}.contains(role)) {
         return _ParsedChatRequest.error('message[$i].role is unsupported');
       }
-      final contentResult = await _parseContent(raw['content'], tempFiles);
+      final rawContent = raw['content'];
+      final contentResult = rawContent == null && role != 'user'
+          ? _ContentResult(text: '')
+          : await _parseContent(rawContent, tempFiles);
       if (contentResult.error != null) {
         return _ParsedChatRequest.error(contentResult.error!);
       }
@@ -380,25 +489,69 @@ class OpenAiServerService {
         }
         continue;
       }
+
+      // Chat templates only know system, user and assistant: tool results
+      // become user turns and tool calls become assistant text.
+      var text = contentResult.text;
+      if (role == 'tool') {
+        final name = raw['name'];
+        text = ToolCalling.toolResultTurn(text,
+            name: name is String ? name : null);
+        role = 'user';
+      } else if (role == 'assistant' && raw['tool_calls'] is List) {
+        text = ToolCalling.assistantTurn(text, raw['tool_calls']);
+      }
+
       if (i == rawMessages.length - 1 && role == 'user') {
-        lastUserText = contentResult.text.trim();
+        lastText = text.trim();
       } else {
-        history.add({'role': role, 'content': contentResult.text});
+        history.add({'role': role, 'content': text});
       }
     }
 
-    if (lastUserText.isEmpty && imagePath == null && audioPath == null) {
+    if (lastText.isEmpty && imagePath == null && audioPath == null) {
       return _ParsedChatRequest.error(
-          'last user message must contain text, image, or audio');
+          'last message must be a user or tool message with text, image, or audio');
     }
 
     return _ParsedChatRequest(
-      prompt: lastUserText.isEmpty ? 'Describe this attachment.' : lastUserText,
+      prompt: lastText.isEmpty ? 'Describe this attachment.' : lastText,
       systemPrompt: systemParts.isEmpty ? null : systemParts.join('\n'),
       history: history,
       imagePath: imagePath,
       audioPath: audioPath,
+      tools: tools,
+      toolChoice: toolChoice,
+      jsonInstruction: jsonInstruction as String?,
     );
+  }
+
+  /// OpenAI `response_format`: JSON mode and JSON schema become instructions
+  /// for the model (llama.cpp grammars are not wired up here).
+  Object? _jsonInstruction(dynamic format) {
+    if (format == null) return null;
+    if (format is! Map) {
+      return const _Invalid('response_format must be an object');
+    }
+    switch (format['type']) {
+      case 'text':
+        return null;
+      case 'json_object':
+        return 'Respond only with a single valid JSON object. '
+            'Do not add any text before or after it, and do not use code fences.';
+      case 'json_schema':
+        final spec = format['json_schema'];
+        final schema = spec is Map ? spec['schema'] : null;
+        if (schema is! Map) {
+          return const _Invalid(
+              'response_format.json_schema.schema is required');
+        }
+        return 'Respond only with a single valid JSON object that matches this '
+            'JSON schema. Do not add any text before or after it, and do not '
+            'use code fences.\n${jsonEncode(schema)}';
+      default:
+        return const _Invalid('response_format.type is unsupported');
+    }
   }
 
   Future<_ContentResult> _parseContent(
@@ -498,77 +651,98 @@ class OpenAiServerService {
     HttpRequest request,
     InferenceService inference,
     _ParsedChatRequest parsed,
-    int? maxTokens,
-    List<String> stop,
+    String systemPrompt,
+    _Sampling sampling,
   ) async {
     final response = request.response;
     _addCorsHeaders(response);
     final id = 'chatcmpl-${_id()}';
     final created = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    var emitted = false;
+    final model = inference.loadedModelName.value;
     final sse = await _SseStream.open(response, onDisconnect: () {
       if (inference.generationSource.value == 'server') {
         unawaited(inference.stopGeneration());
       }
     });
 
-    void emit(String token) {
-      emitted = true;
+    void chunk(Map<String, dynamic> delta, {String? finishReason}) {
       sse.event({
         'id': id,
         'object': 'chat.completion.chunk',
         'created': created,
-        'model': inference.loadedModelName.value,
+        'model': model,
         'choices': [
-          {
-            'index': 0,
-            'delta': {'content': token},
-            'finish_reason': null,
-          }
+          {'index': 0, 'delta': delta, 'finish_reason': finishReason}
         ],
       });
+    }
+
+    // OpenAI clients expect the role first.
+    chunk({'role': 'assistant', 'content': ''});
+
+    final filter = parsed.usesTools ? ToolCallStreamFilter() : null;
+    final sent = StringBuffer();
+    void emit(String token) {
+      final visible = filter == null ? token : filter.add(token);
+      if (visible.isEmpty) return;
+      sent.write(visible);
+      chunk({'content': visible});
     }
 
     final stopsBefore = inference.stopCount;
     final result = await inference.generate(
       prompt: parsed.prompt,
-      systemPrompt: parsed.systemPrompt ??
-          _defaultSystemPrompt(inference.loadedModelName.value),
+      systemPrompt: systemPrompt,
       conversationHistory: parsed.history,
       source: 'server',
       imagePath: parsed.imagePath,
       audioPath: parsed.audioPath,
-      maxTokens: maxTokens,
-      stopSequences: stop,
+      maxTokens: sampling.maxTokens,
+      stopSequences: sampling.stop,
+      temperature: sampling.temperature,
+      topP: sampling.topP,
       onToken: emit,
     );
-    await _finishStream(sse, inference, stopsBefore,
-        emitted ? null : result, emit);
+
+    if (inference.stopCount != stopsBefore) {
+      await _endInterrupted(sse);
+      return;
+    }
+
+    var finishReason = 'stop';
+    if (filter != null) {
+      final full = filter.text.isEmpty ? result : filter.text;
+      final parsedCalls = ToolCalling.parse(full, parsed.toolNames);
+      if (parsedCalls.calls.isNotEmpty) {
+        chunk({
+          'tool_calls': [
+            for (var i = 0; i < parsedCalls.calls.length; i++)
+              parsedCalls.calls[i].toJson(index: i)
+          ],
+        });
+        finishReason = 'tool_calls';
+      } else {
+        final rest = filter.text.isEmpty ? result : filter.unsent;
+        if (rest.isNotEmpty) chunk({'content': rest});
+      }
+    } else if (sent.isEmpty && result.isNotEmpty) {
+      // Engines that don't stream (or an error message) still answer.
+      chunk({'content': result});
+    }
+    chunk({}, finishReason: finishReason);
+    sse.raw('data: [DONE]\n\n');
+    await sse.close();
   }
 
-  /// Ends an SSE stream: reports an interruption as an error event rather
-  /// than a normal [DONE], so clients don't mistake a partial answer for a
-  /// complete one.
-  Future<void> _finishStream(
-    _SseStream sse,
-    InferenceService inference,
-    int stopsBefore,
-    String? unemittedResult,
-    void Function(String) emit,
-  ) async {
-    if (inference.stopCount != stopsBefore) {
-      sse.event({
-        'error': {
-          'message': 'Generation was interrupted',
-          'type': 'interrupted',
-        }
-      });
-    } else {
-      if (unemittedResult != null && unemittedResult.isNotEmpty) {
-        emit(unemittedResult);
+  /// Reports an interruption as an error event rather than a normal [DONE],
+  /// so clients don't mistake a partial answer for a complete one.
+  Future<void> _endInterrupted(_SseStream sse) async {
+    sse.event({
+      'error': {
+        'message': 'Generation was interrupted',
+        'type': 'interrupted',
       }
-      sse.raw('data: [DONE]\n\n');
-    }
+    });
     await sse.close();
   }
 
@@ -576,13 +750,13 @@ class OpenAiServerService {
     HttpRequest request,
     InferenceService inference,
     String prompt,
-    int? maxTokens,
-    List<String> stop,
+    _Sampling sampling,
   ) async {
     final response = request.response;
     _addCorsHeaders(response);
     final id = 'cmpl-${_id()}';
     final created = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final model = inference.loadedModelName.value;
     var emitted = false;
     final sse = await _SseStream.open(response, onDisconnect: () {
       if (inference.generationSource.value == 'server') {
@@ -590,15 +764,14 @@ class OpenAiServerService {
       }
     });
 
-    void emit(String token) {
-      emitted = true;
+    void chunk(String text, {String? finishReason}) {
       sse.event({
         'id': id,
         'object': 'text_completion',
         'created': created,
-        'model': inference.loadedModelName.value,
+        'model': model,
         'choices': [
-          {'index': 0, 'text': token, 'finish_reason': null}
+          {'index': 0, 'text': text, 'finish_reason': finishReason}
         ],
       });
     }
@@ -606,17 +779,43 @@ class OpenAiServerService {
     final stopsBefore = inference.stopCount;
     final result = await inference.generate(
       prompt: prompt,
-      systemPrompt: _defaultSystemPrompt(inference.loadedModelName.value),
+      systemPrompt: _defaultSystemPrompt(model),
       source: 'server',
-      maxTokens: maxTokens,
-      stopSequences: stop,
-      onToken: emit,
+      maxTokens: sampling.maxTokens,
+      stopSequences: sampling.stop,
+      temperature: sampling.temperature,
+      topP: sampling.topP,
+      onToken: (token) {
+        emitted = true;
+        chunk(token);
+      },
     );
-    await _finishStream(sse, inference, stopsBefore,
-        emitted ? null : result, emit);
+    if (inference.stopCount != stopsBefore) {
+      await _endInterrupted(sse);
+      return;
+    }
+    if (!emitted && result.isNotEmpty) chunk(result);
+    chunk('', finishReason: 'stop');
+    sse.raw('data: [DONE]\n\n');
+    await sse.close();
   }
 
-  Map<String, dynamic> _chatResponse(String model, String text) {
+  Map<String, dynamic> _chatResponse(
+      String model, String text, _ParsedChatRequest parsed) {
+    if (parsed.jsonInstruction != null) text = _stripCodeFence(text);
+    var message = <String, dynamic>{'role': 'assistant', 'content': text};
+    var finishReason = 'stop';
+    if (parsed.usesTools) {
+      final result = ToolCalling.parse(text, parsed.toolNames);
+      if (result.calls.isNotEmpty) {
+        message = {
+          'role': 'assistant',
+          'content': result.content,
+          'tool_calls': [for (final c in result.calls) c.toJson()],
+        };
+        finishReason = 'tool_calls';
+      }
+    }
     return {
       'id': 'chatcmpl-${_id()}',
       'object': 'chat.completion',
@@ -625,11 +824,18 @@ class OpenAiServerService {
       'choices': [
         {
           'index': 0,
-          'message': {'role': 'assistant', 'content': text},
-          'finish_reason': 'stop',
+          'message': message,
+          'finish_reason': finishReason,
         }
       ],
     };
+  }
+
+  /// Models often wrap JSON in a ```json fence despite being told not to.
+  static String _stripCodeFence(String text) {
+    final match =
+        RegExp(r'^\s*```(?:json)?\s*([\s\S]*?)\s*```\s*$').firstMatch(text);
+    return match == null ? text : match.group(1)!;
   }
 
   Future<Map<String, dynamic>> _readJson(HttpRequest request) async {
@@ -777,6 +983,9 @@ class _ParsedChatRequest {
   final List<Map<String, String>> history;
   final String? imagePath;
   final String? audioPath;
+  final List<ToolSpec> tools;
+  final ToolChoice toolChoice;
+  final String? jsonInstruction;
   final String? error;
 
   _ParsedChatRequest({
@@ -785,6 +994,9 @@ class _ParsedChatRequest {
     required this.history,
     required this.imagePath,
     required this.audioPath,
+    this.tools = const [],
+    this.toolChoice = ToolChoice.auto,
+    this.jsonInstruction,
   }) : error = null;
 
   _ParsedChatRequest.error(this.error)
@@ -792,7 +1004,41 @@ class _ParsedChatRequest {
         systemPrompt = null,
         history = const [],
         imagePath = null,
-        audioPath = null;
+        audioPath = null,
+        tools = const [],
+        toolChoice = ToolChoice.auto,
+        jsonInstruction = null;
+
+  /// Whether the reply should be parsed for tool calls.
+  bool get usesTools => tools.isNotEmpty && !toolChoice.disabled;
+
+  Iterable<String> get toolNames => tools.map((t) => t.name);
+}
+
+class _Sampling {
+  final int? maxTokens;
+  final List<String> stop;
+  final double? temperature;
+  final double? topP;
+  final String? error;
+
+  const _Sampling({
+    required this.maxTokens,
+    required this.stop,
+    required this.temperature,
+    required this.topP,
+  }) : error = null;
+
+  const _Sampling.error(this.error)
+      : maxTokens = null,
+        stop = const [],
+        temperature = null,
+        topP = null;
+}
+
+class _Invalid {
+  final String message;
+  const _Invalid(this.message);
 }
 
 class _ContentResult {
