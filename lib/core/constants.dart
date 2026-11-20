@@ -30,6 +30,8 @@ class AppConstants {
   static const String keyMaxTokens = 'max_tokens';
   static const String keyContextSize = 'context_size';
   static const String keyHapticsEnabled = 'haptics_enabled';
+  /// Summarize chat messages that no longer fit in the context window.
+  static const String keySummarizeHistory = 'summarize_history';
   static const String keyAutoUpdateCheck = 'auto_update_check';
   static const String keyLastUpdateCheck = 'last_update_check';
   static const String keyLastUpdatePrompt = 'last_update_prompt';

@@ -16,6 +16,7 @@ import '../core/ui.dart';
 import '../models/chat_message.dart';
 import '../models/chat_session.dart';
 import '../services/hive_service.dart';
+import '../services/history_summary.dart';
 import '../services/inference_service.dart';
 import '../services/app_log_service.dart';
 import '../services/chat_image_store.dart';
@@ -566,22 +567,34 @@ class ChatController extends GetxController {
 
       String rawResponse;
 
-      // Build conversation history
-      final history = messages
-          .where((m) => m.role == 'user' || m.role == 'assistant')
-          .map((m) => {
-                'role': m.role,
-                'content': m.role == 'assistant'
-                    ? splitThoughtTags(m.content).answer
-                    : m.content,
-              })
+      // Build conversation history (the new message goes as the prompt)
+      final earlier = messages
+          .where((m) =>
+              (m.role == 'user' || m.role == 'assistant') && m.id != userMsg.id)
           .toList();
+      final history = [
+        for (final m in earlier)
+          {
+            'role': m.role,
+            'content': m.role == 'assistant'
+                ? splitThoughtTags(m.content).answer
+                : m.content,
+          }
+      ];
 
       final inference = Get.find<InferenceService>();
-      rawResponse = await inference.generate(
+      final fitted = await _historyWithSummary(
         prompt: effectiveText,
         systemPrompt: _effectiveSystemPrompt,
-        conversationHistory: history,
+        history: history,
+        ids: [for (final m in earlier) m.id],
+        generationId: generationId,
+      );
+      if (fitted == null) return; // Stopped while summarizing.
+      rawResponse = await inference.generate(
+        prompt: effectiveText,
+        systemPrompt: fitted.systemPrompt,
+        conversationHistory: fitted.history,
         source: 'chat',
         imagePath: imagePath,
         audioPath: fileType == 'audio' ? filePath : null,
@@ -649,6 +662,83 @@ class ChatController extends GetxController {
       isLoading.value = false;
       _scrollToBottom();
     }
+  }
+
+  /// Earlier messages summarized into the system prompt of the current
+  /// request (0 when none), for the status under the reply.
+  final summarizedMessages = 0.obs;
+
+  /// The system prompt and history for the next request. When older
+  /// messages no longer fit in the context window, they are summarized
+  /// (folding in the chat's previous summary) and the summary goes in the
+  /// system prompt instead. Returns null if the user stopped meanwhile.
+  Future<({String systemPrompt, List<Map<String, String>> history})?>
+      _historyWithSummary({
+    required String prompt,
+    required String systemPrompt,
+    required List<Map<String, String>> history,
+    required List<String> ids,
+    required int generationId,
+  }) async {
+    summarizedMessages.value = 0;
+    final sessionId = currentSessionId.value;
+    final session = sessions.firstWhereOrNull((s) => s.id == sessionId);
+    if (!Get.find<SettingsController>().summarizeHistory.value ||
+        session == null) {
+      return (systemPrompt: systemPrompt, history: history);
+    }
+    final inference = Get.find<InferenceService>();
+    var summary = session.historySummary;
+    final covered = summary?.coveredIn(ids) ?? 0;
+    // A summary whose last message was deleted no longer matches the chat.
+    if (covered == 0) summary = null;
+    var rest = history.sublist(covered);
+    var system = summary?.withSystemPrompt(systemPrompt) ?? systemPrompt;
+
+    final reply = inference.chatReplyTokens;
+    final cut = await inference.historyCut(
+        prompt: prompt,
+        systemPrompt: system,
+        history: rest,
+        reserveTokens: reply);
+    if (cut > 0) {
+      // Summarize a bit more than needed (room for a quarter of the
+      // context and the new summary), so this doesn't run every turn.
+      final more = await inference.historyCut(
+          prompt: prompt,
+          systemPrompt: system,
+          history: rest,
+          reserveTokens: reply +
+              HistorySummarizer.maxSummaryTokens +
+              inference.contextTokensTotal.value ~/ 4);
+      final upTo = covered + (more > cut ? more : cut);
+      final attachmentType = streamingAttachmentType.value;
+      streamingAttachmentType.value = 'summary';
+      final text = await inference.summarizeHistory(
+        previous: summary?.text,
+        messages: history.sublist(covered, upTo),
+      );
+      if (generationId != _generationSerial) return null;
+      streamingAttachmentType.value = attachmentType;
+      if (text != null) {
+        summary = HistorySummary(text: text, upToMessageId: ids[upTo - 1]);
+        system = summary.withSystemPrompt(systemPrompt);
+        rest = history.sublist(upTo);
+        final current = sessions.firstWhereOrNull((s) => s.id == sessionId);
+        if (current != null) {
+          final updated = current.copyWith(
+              historySummary: summary, updatedAt: current.updatedAt);
+          _hive.saveSession(updated.id, updated.toMap());
+          final idx = sessions.indexWhere((s) => s.id == updated.id);
+          if (idx >= 0) sessions[idx] = updated;
+        }
+      }
+      // If summarizing failed, the oldest messages are left out as before.
+    }
+    if (summary != null) {
+      summarizedMessages.value = history.length - rest.length;
+    }
+    return (systemPrompt: system, history: rest);
   }
 
   void stopGenerating() {

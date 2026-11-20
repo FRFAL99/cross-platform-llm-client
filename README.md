@@ -32,7 +32,7 @@ If you installed the upstream PrivateLM before, uninstall it first: it uses the 
 - **API server** (Server tab): start it and point any OpenAI client at `http://<phone>:8080/v1`. Turn on network mode to reach it from other devices on the Wi-Fi; it then requires the API key shown in the app. The Server tab has copy-ready examples (curl, Python, JavaScript).
 
 - **Speed test** (Settings › Speed test): measures the loaded model on this phone or across the cluster, like llama-bench (pp512 prompt reading, tg128 generation), and keeps a history so you can compare models, quantizations and cluster setups.
-- **Long chats**: the oldest messages are left out, whole, when the conversation no longer fits in the context window (counted with the model's own tokenizer). The chat shows how many are out of memory. Raise *Context size* in Settings to keep more.
+- **Long chats**: when the conversation no longer fits in the context window (counted with the model's own tokenizer), the model summarizes the oldest messages and the summary takes their place, so the chat keeps its earlier facts. The summary is saved with the chat and updated as it grows; the chat shows how many messages it covers. Turn it off in Settings › Summarize older messages to only leave the oldest messages out, as before. Raise *Context size* in Settings to keep more messages word for word. API server requests are not summarized: clients send their own history.
 
 ### API server
 

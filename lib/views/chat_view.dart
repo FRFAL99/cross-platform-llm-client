@@ -492,6 +492,7 @@ class ChatView extends GetView<ChatController> {
                 alignment: Alignment.centerLeft,
                 child: Text(
                     '${inf.tokensPerSecond.value.toStringAsFixed(1)} tok/s'
+                    '${controller.summarizedMessages.value > 0 ? ' · ${controller.summarizedMessages.value} older messages summarized' : ''}'
                     '${inf.droppedHistoryMessages.value > 0 ? ' · ${inf.droppedHistoryMessages.value} older messages out of memory' : ''}',
                     style: TextStyle(
                         fontFamily: 'Inter',
@@ -512,7 +513,9 @@ class ChatView extends GetView<ChatController> {
         ? 'Reading image…'
         : attachmentType == 'audio'
             ? 'Listening to audio…'
-            : null;
+            : attachmentType == 'summary'
+                ? 'Summarizing earlier messages…'
+                : null;
     if (msg == null) return _TypingDots(isDark: isDark);
     return Row(mainAxisSize: MainAxisSize.min, children: [
       _TypingDots(isDark: isDark),

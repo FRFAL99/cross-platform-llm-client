@@ -76,6 +76,18 @@ class SettingsView extends GetView<SettingsController> {
                       _buildStopSequencesGroup(ctx),
                     ]),
               ),
+              AppRow(
+                icon: Icons.notes_rounded,
+                title: 'Summarize older messages',
+                subtitle: 'When a chat no longer fits in memory, the model '
+                    'summarizes the oldest messages instead of forgetting them',
+                trailing: Switch(
+                  value: controller.summarizeHistory.value,
+                  onChanged: controller.setSummarizeHistory,
+                ),
+                onTap: () => controller
+                    .setSummarizeHistory(!controller.summarizeHistory.value),
+              ),
             ]),
             const SectionHeader('Performance'),
             AppGroup(dividerIndent: 60, children: [
