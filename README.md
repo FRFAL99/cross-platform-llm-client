@@ -123,8 +123,10 @@ flutter build apk --debug
 
 ### Releases
 
-The `Android` GitHub Actions workflow builds every pull request. Pushing a tag
-`vX.Y.Z` that matches `version:` in `pubspec.yaml` builds signed per-ABI APKs
+The `Android` GitHub Actions workflow runs `flutter analyze` and `flutter test`
+on every pull request; it does not build APKs there. To get a debug-signed APK
+from a branch (or to check that native code still compiles), run the workflow
+by hand from the Actions tab. Pushing a tag `vX.Y.Z` that matches `version:` in `pubspec.yaml` builds signed per-ABI APKs
 and publishes them as a GitHub Release, which the in-app updater picks up.
 
 One-time setup: create a keystore and store it in the repository secrets

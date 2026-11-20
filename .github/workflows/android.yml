@@ -1,7 +1,10 @@
 name: Android
 
-# Pull requests: analyze, test and build a release APK (debug-signed, not
-# published) to prove the app still builds.
+# Pull requests: analyze and test only (a few minutes). No APK: building
+# llama.cpp for every ABI takes most of the run and nobody installs PR builds.
+# Manual run (Actions > Android > Run workflow) on a branch: also build
+# debug-signed APKs as a downloadable artifact, e.g. to check native changes
+# compile or to try a build on a phone.
 # Tags vX.Y.Z (or a manual run on a tag): build signed per-ABI APKs and publish
 # them as a GitHub Release. The in-app updater reads these releases.
 
@@ -19,7 +22,31 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          # 3.50+ needs Gradle 9.3.1; the Android project is on Gradle 8.14.
+          flutter-version: 3.47.9
+          channel: stable
+          cache: true
+
+      - name: Dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+
+      - name: Test
+        run: flutter test
+
   build:
+    needs: checks
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
@@ -39,12 +66,6 @@ jobs:
 
       - name: Dependencies
         run: flutter pub get
-
-      - name: Analyze
-        run: flutter analyze --no-fatal-infos
-
-      - name: Test
-        run: flutter test
 
       - name: Check tag matches pubspec version
         if: startsWith(github.ref, 'refs/tags/v')
@@ -78,8 +99,8 @@ jobs:
 
       - name: Build APKs
         env:
-          # Only pull requests may build without the release key; their APKs
-          # are never published.
+          # Only non-tag builds may skip the release key; their APKs are
+          # never published.
           PRIVATELM_ALLOW_DEBUG_RELEASE_SIGNING: ${{ startsWith(github.ref, 'refs/tags/v') && 'false' || 'true' }}
         run: flutter build apk --release --split-per-abi
 
