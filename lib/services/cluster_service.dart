@@ -458,34 +458,6 @@ class ClusterService extends GetxService {
     }
   }
 
-  /// LiteRT models can't be split across phones (the cluster is llama.cpp).
-  /// When this phone is a master with workers, asks before loading one here
-  /// alone. True to go ahead.
-  Future<bool> confirmLiteRtRunsHere(String model) async {
-    final context = Get.context;
-    if (role != ClusterRole.master || workers.isEmpty || context == null) return true;
-    final go = await showAppSheet<bool>(
-      context,
-      title: 'This model can\'t use your workers',
-      subtitle: '${model.replaceAll(RegExp(r'\.(litertlm|task)$'), '')} is a LiteRT '
-          'model, and only GGUF models can be shared across phones. It will run '
-          'on this phone only. To use your workers, load a GGUF model instead.',
-      builder: (ctx) => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          PrimaryButton(
-            label: 'Load on this phone only',
-            icon: Icons.smartphone_rounded,
-            onPressed: () => Navigator.pop(ctx, true),
-          ),
-          const SizedBox(height: 10),
-          TonalButton.neutral(ctx, label: 'Cancel', onTap: () => Navigator.pop(ctx, false)),
-        ],
-      ),
-    );
-    return go == true;
-  }
-
   /// "Fits on this phone" sheet. True to share with workers anyway.
   Future<bool> _askFitsHere(String model, double modelMb, int workerCount) async {
     final context = Get.context;

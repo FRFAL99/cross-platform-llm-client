@@ -199,7 +199,9 @@ class FakeInference extends GetxService implements InferenceService {
   @override
   final isVisionLoaded = false.obs;
   @override
-  final loadedModelRuntime = 'litert'.obs;
+  final loadedModelRuntime = 'llama'.obs;
+  @override
+  bool get ggufVisionLoaded => false;
 
   int? lastMaxTokens;
   List<String> lastStop = const [];

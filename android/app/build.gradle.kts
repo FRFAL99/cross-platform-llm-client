@@ -26,11 +26,6 @@ if (isReleaseBuild && !hasReleaseKeystore && !allowDebugReleaseSigning) {
     )
 }
 
-if (file("google-services.json").exists()) {
-    apply(plugin = "com.google.gms.google-services")
-    apply(plugin = "com.google.firebase.crashlytics")
-}
-
 android {
     namespace = "com.orailnoor.privatelm"
     compileSdk = flutter.compileSdkVersion

@@ -11,19 +11,15 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:uuid/uuid.dart';
-import 'package:gal/gal.dart';
 import '../controllers/settings_controller.dart';
 import '../core/constants.dart';
 import '../core/ui.dart';
 import '../models/chat_message.dart';
 import '../models/chat_session.dart';
-import '../ffi/sd_ffi_bindings.dart';
 import '../services/hive_service.dart';
 import '../services/inference_service.dart';
 import '../services/cloud_service.dart';
-import '../services/local_image_service.dart';
 import '../services/app_log_service.dart';
-import '../services/image_generation_notification_service.dart';
 import '../services/document_extractor_service.dart';
 import '../utils/thought_parser.dart';
 
@@ -70,22 +66,10 @@ class ChatController extends GetxController {
   final selectedFileType = Rxn<String>();
   final selectedFileSize = 0.obs;
 
-  // Batch Image Generation
-  final batchPrompts = <String>[].obs;
-  final batchModeAccepted = false.obs;
-  final lastBatchImagesBase64 = <String>[].obs;
-
   // Real-time streaming state — the AI response as it's being generated
   final streamingResponse = ''.obs;
   final isStreaming = false.obs;
   final streamingAttachmentType = Rxn<String>();
-
-  // Image generation progress (lightweight, replaces text-heavy updates)
-  final imageGenStep = 0.obs;
-  final imageGenTotal = 0.obs;
-  final imageGenEstimatedSecs = 0.obs;
-  final imageGenStartTime = Rxn<DateTime>();
-  final imageGenDecoding = false.obs;
 
   // Speech-to-text
   final isListening = false.obs;
@@ -99,17 +83,12 @@ class ChatController extends GetxController {
   bool _followStreaming = true;
   bool _scrollListenerAttached = false;
   int _generationSerial = 0;
-  bool _batchCancelled = false;
 
   @override
   void onInit() {
     super.onInit();
     scrollController.addListener(_handleUserScroll);
     _scrollListenerAttached = true;
-    batchModeAccepted.value = _hive.getSetting<bool>(
-            AppConstants.keyBatchModeWarningAccepted,
-            defaultValue: false) ??
-        false;
     loadSessions();
     _initSpeech();
   }
@@ -173,11 +152,6 @@ class ChatController extends GetxController {
   }
 
   // ─── Session Management ─────────────────────────
-
-  void acceptBatchMode() {
-    batchModeAccepted.value = true;
-    _hive.setSetting(AppConstants.keyBatchModeWarningAccepted, true);
-  }
 
   void loadSessions() {
     final raw = _hive.getAllSessions();
@@ -278,9 +252,6 @@ class ChatController extends GetxController {
         break;
       case 'kimi':
         modelName = s.kimiModel.value;
-        break;
-      case 'stability':
-        modelName = s.stabilityModel.value;
         break;
       case 'nvidia':
         modelName = s.nvidiaModel.value;
@@ -506,66 +477,6 @@ class ChatController extends GetxController {
 
   // ─── Send Message ───────────────────────────────
 
-  Future<void> generateBatch() async {
-    if (batchPrompts.isEmpty || isLoading.value || isStreaming.value) return;
-
-    // Copy the list to avoid concurrent modification issues
-    final promptsToRun = List<String>.from(batchPrompts);
-    batchPrompts.clear();
-    lastBatchImagesBase64.clear();
-
-    final generatedImagesBase64 = <String>[];
-    _batchCancelled = false;
-
-    for (final prompt in promptsToRun) {
-      if (_batchCancelled) break;
-      textController.text = prompt;
-      // sendMessage() returns once this prompt's generation has finished.
-      await sendMessage();
-      if (_batchCancelled) break; // User tapped stop
-
-      // Capture generated image
-      final lastMsg = messages.lastOrNull;
-      if (lastMsg != null &&
-          lastMsg.role == 'assistant' &&
-          lastMsg.imageBase64 != null) {
-        generatedImagesBase64.add(lastMsg.imageBase64!);
-      }
-
-      // Add a small delay between generations to let UI breathe
-      await Future.delayed(const Duration(milliseconds: 1000));
-    }
-
-    if (generatedImagesBase64.isNotEmpty) {
-      lastBatchImagesBase64.value = generatedImagesBase64;
-    }
-  }
-
-  Future<void> downloadLastBatch() async {
-    if (lastBatchImagesBase64.isEmpty) return;
-    try {
-      final hasAccess = await Gal.hasAccess();
-      if (!hasAccess) {
-        final granted = await Gal.requestAccess();
-        if (!granted) {
-          showToast(
-              'Permission Denied', 'Cannot save images without gallery access.',
-              tone: ToastTone.error);
-          return;
-        }
-      }
-      for (final base64 in lastBatchImagesBase64) {
-        await Gal.putImageBytes(base64Decode(base64));
-      }
-      showToast(
-          'Success', 'Saved ${lastBatchImagesBase64.length} images to gallery.',
-          tone: ToastTone.success);
-      lastBatchImagesBase64.clear();
-    } catch (e) {
-      showToast('Error', 'Failed to save images: $e', tone: ToastTone.error);
-    }
-  }
-
   Future<void> sendMessage() async {
     if (isLoading.value || isStreaming.value) return;
 
@@ -691,120 +602,23 @@ class ChatController extends GetxController {
           .toList();
 
       if (inferenceMode == 'local') {
-        final localImage = Get.find<LocalImageService>();
-
-        if (localImage.isModelLoaded.value) {
-          // Local image generation
-          final settings = Get.find<SettingsController>();
-          final imageNotifications =
-              Get.find<ImageGenerationNotificationService>();
-          final steps = _hive.getSetting<int>(AppConstants.keyImageSteps,
-                  defaultValue: AppConstants.defaultImageSteps) ??
-              AppConstants.defaultImageSteps;
-          final sizeSetting = settings.imageGenSize.value;
-          final sizeLabel =
-              sizeSetting == 0 ? 'Auto size' : '${sizeSetting}x$sizeSetting';
-          final backendLabel = localImage.currentBackend.value == Backend.cpu
-              ? 'CPU'
-              : localImage.currentBackend.value.displayName
-                  .split(' ')
-                  .first
-                  .toUpperCase();
-          imageGenStep.value = 0;
-          imageGenTotal.value = steps;
-          imageGenEstimatedSecs.value = 0;
-          imageGenStartTime.value = DateTime.now();
-          imageGenDecoding.value = false;
-          await imageNotifications.start(
-            modelName: localImage.loadedModelName.value,
-            backend: backendLabel,
-            steps: steps,
-            sizeLabel: sizeLabel,
-          );
-          print('[ChatController] Starting image generation for: $text');
-          final pngBytes = await localImage.generateImage(
-            prompt: text,
-            onProgress: (step, total) {
-              if (generationId != _generationSerial) return;
-              print(
-                  '[ChatController] Progress callback: step=$step, total=$total');
-              imageGenStep.value = step;
-              imageGenTotal.value = total;
-              if (step >= total && total > 0) {
-                imageGenDecoding.value = true;
-                print(
-                    '[ChatController] Sampling complete, VAE decode in progress');
-                imageNotifications.decoding();
-              }
-              if (step > 0 && total > 0 && step < total) {
-                final start = imageGenStartTime.value;
-                if (start != null) {
-                  final elapsed =
-                      DateTime.now().difference(start).inMilliseconds;
-                  final avgMsPerStep = elapsed / step;
-                  final remainingSteps = total - step;
-                  imageGenEstimatedSecs.value =
-                      (avgMsPerStep * remainingSteps / 1000).ceil();
-                }
-              }
-              imageNotifications.update(
-                step: step,
-                total: total,
-                etaSeconds: imageGenEstimatedSecs.value,
-                elapsedSeconds: imageGenStartTime.value == null
-                    ? 0
-                    : DateTime.now()
-                        .difference(imageGenStartTime.value!)
-                        .inSeconds,
-              );
-              _scrollToBottom();
-            },
-          );
-          // Calculate total generation time
-          final genDurationMs = imageGenStartTime.value != null
-              ? DateTime.now()
-                  .difference(imageGenStartTime.value!)
-                  .inMilliseconds
-              : null;
-          print(
-              '[ChatController] generateImage returned, bytes=${pngBytes?.length}, duration=${genDurationMs}ms');
-
-          // A stopped job must not post a completed/failed notification.
-          if (generationId != _generationSerial) return;
-          if (pngBytes != null) {
-            await imageNotifications.complete(durationMs: genDurationMs ?? 0);
-            rawResponse = '[IMAGE_BASE64]${base64Encode(pngBytes)}';
-          } else {
-            await imageNotifications.failed();
-            final reason = localImage.lastFailureReason;
-            rawResponse = reason != null
-                ? '⏳ $reason'
-                : '❌ Local image generation failed.';
-          }
-        } else {
-          final inference = Get.find<InferenceService>();
-
-          // LiteRT models can consume image/audio attachments. GGUF currently
-          // returns a clear unsupported message from the inference layer.
-
-          rawResponse = await inference.generate(
-            prompt: effectiveText,
-            systemPrompt: _effectiveSystemPrompt,
-            conversationHistory: history,
-            source: 'chat',
-            imagePath: imagePath,
-            audioPath: fileType == 'audio' ? filePath : null,
-            stopSequences:
-                Get.find<SettingsController>().stopSequences.toList(),
-            onToken: (token) {
-              // Ignore tokens from a generation the user already stopped.
-              if (generationId != _generationSerial) return;
-              streamingResponse.value += token;
-              trackThoughtTiming();
-              _scrollToBottom();
-            },
-          );
-        }
+        final inference = Get.find<InferenceService>();
+        rawResponse = await inference.generate(
+          prompt: effectiveText,
+          systemPrompt: _effectiveSystemPrompt,
+          conversationHistory: history,
+          source: 'chat',
+          imagePath: imagePath,
+          audioPath: fileType == 'audio' ? filePath : null,
+          stopSequences: Get.find<SettingsController>().stopSequences.toList(),
+          onToken: (token) {
+            // Ignore tokens from a generation the user already stopped.
+            if (generationId != _generationSerial) return;
+            streamingResponse.value += token;
+            trackThoughtTiming();
+            _scrollToBottom();
+          },
+        );
       } else {
         final cloud = Get.find<CloudService>();
         final apiMessages = [
@@ -837,20 +651,6 @@ class ChatController extends GetxController {
       isStreaming.value = false;
       streamingAttachmentType.value = null;
       streamingResponse.value = '';
-      imageGenStep.value = 0;
-      imageGenTotal.value = 0;
-      imageGenDecoding.value = false;
-
-      String? outImageBase64;
-      if (rawResponse.startsWith('[IMAGE_BASE64]')) {
-        outImageBase64 = rawResponse.substring('[IMAGE_BASE64]'.length);
-        rawResponse = 'Here is your generated image:';
-      }
-
-      // Calculate total generation time for image gen
-      final genDurationMs = imageGenStartTime.value != null
-          ? DateTime.now().difference(imageGenStartTime.value!).inMilliseconds
-          : null;
 
       // Display response directly (no command processing)
       final aiMsg = ChatMessage(
@@ -858,14 +658,11 @@ class ChatController extends GetxController {
         chatId: currentSessionId.value,
         role: 'assistant',
         content: rawResponse,
-        imageBase64: outImageBase64,
         tokensPerSec: tps,
         thoughtDurationSeconds: thoughtDurationSeconds,
-        imageGenDurationMs: genDurationMs,
       );
       messages.add(aiMsg);
       _hive.saveMessage(aiMsg.id, aiMsg.toMap());
-      imageGenStartTime.value = null;
 
       // Update session
       final session =
@@ -881,13 +678,6 @@ class ChatController extends GetxController {
       isStreaming.value = false;
       streamingAttachmentType.value = null;
       streamingResponse.value = '';
-      imageGenStep.value = 0;
-      imageGenTotal.value = 0;
-      imageGenDecoding.value = false;
-      if (imageGenStartTime.value != null) {
-        await Get.find<ImageGenerationNotificationService>().failed();
-      }
-      imageGenStartTime.value = null;
       Get.find<AppLogService>().error('Chat response failed', details: e);
       final errorMsg = ChatMessage(
         id: _uuid.v4(),
@@ -920,15 +710,7 @@ class ChatController extends GetxController {
     isStreaming.value = false;
     streamingAttachmentType.value = null;
     streamingResponse.value = '';
-    Get.find<ImageGenerationNotificationService>().cancel();
-    imageGenStep.value = 0;
-    imageGenTotal.value = 0;
-    imageGenEstimatedSecs.value = 0;
-    imageGenStartTime.value = null;
-    imageGenDecoding.value = false;
-    _batchCancelled = true;
     unawaited(Get.find<InferenceService>().stopGeneration());
-    Get.find<LocalImageService>().cancelGeneration();
     Get.find<CloudService>().cancel();
   }
 

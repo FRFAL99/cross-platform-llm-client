@@ -1,7 +1,6 @@
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import '../core/redact.dart';
-import 'crash_reporting_service.dart';
 
 class AppLogEntry {
   final DateTime timestamp;
@@ -62,14 +61,6 @@ class AppLogService extends GetxService {
     );
     if (entries.length > 200) {
       entries.removeRange(200, entries.length);
-    }
-    if ((level == 'ERROR' || level == 'WARNING') &&
-        Get.isRegistered<CrashReportingService>()) {
-      Get.find<CrashReportingService>().recordNonFatal(
-        details ?? message,
-        reason: message,
-        extra: {'app_log_level': level},
-      );
     }
   }
 

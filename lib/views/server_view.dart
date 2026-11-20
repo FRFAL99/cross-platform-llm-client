@@ -44,7 +44,7 @@ class ServerView extends GetView<ServerController> {
                 title: controller.modelName,
                 subtitle: controller.hasLocalModel
                     ? 'Loaded on this device'
-                    : 'Load a GGUF or LiteRT-LM model to serve it',
+                    : 'Load a GGUF model to serve it',
                 trailing: controller.hasLocalModel
                     ? AppTag('Ready', color: t.green)
                     : AppTag('Not loaded', color: t.orange),

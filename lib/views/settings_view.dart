@@ -6,11 +6,9 @@ import '../core/ui.dart';
 import '../widgets/home_empty_state.dart' show providerLabel;
 import '../services/inference_service.dart';
 import '../services/hive_service.dart';
-import '../services/local_image_service.dart';
 import '../services/update_service.dart';
 import '../services/device_info_service.dart';
 import '../services/device_info_native.dart' as platform_info;
-import '../ffi/sd_ffi_bindings.dart';
 import '../services/cluster_service.dart';
 import 'cluster_view.dart';
 import 'log_view.dart';
@@ -95,22 +93,13 @@ class SettingsView extends GetView<SettingsController> {
               _navRow(
                 context,
                 icon: Icons.speed_rounded,
-                title: 'GGUF & LiteRT',
-                value: switch (controller.liteRtPerformanceMode.value) {
+                title: 'Local models',
+                value: switch (controller.performanceMode.value) {
                   'gpu_fast' => 'GPU fast',
                   'cpu_safe' => 'CPU safe',
                   _ => 'Auto fast',
                 },
-                builder: (ctx) => _buildLiteRtGroup(ctx),
-              ),
-              _navRow(
-                context,
-                icon: Icons.image_outlined,
-                title: 'Image generation',
-                value: controller.imageGenBackend.value == Backend.cpu
-                    ? 'CPU'
-                    : 'GPU',
-                builder: (ctx) => _buildImageGenerationGroup(ctx),
+                builder: (ctx) => _buildPerformanceGroup(ctx),
               ),
               if (Get.isRegistered<ClusterService>())
                 AppRow(
@@ -473,11 +462,8 @@ class SettingsView extends GetView<SettingsController> {
 
   String _localSubtitle() {
     final inf = Get.find<InferenceService>();
-    final localImage = Get.find<LocalImageService>();
     if (inf.isModelLoaded.value) {
       return 'Active: ${inf.loadedModelName.value}';
-    } else if (localImage.isModelLoaded.value) {
-      return 'Active: ${localImage.loadedModelName.value}';
     }
     return 'No model loaded';
   }
@@ -604,7 +590,7 @@ class SettingsView extends GetView<SettingsController> {
     });
   }
 
-  Widget _buildLiteRtGroup(BuildContext context) {
+  Widget _buildPerformanceGroup(BuildContext context) {
     final modes = [
       (
         value: 'auto_fast',
@@ -633,14 +619,13 @@ class SettingsView extends GetView<SettingsController> {
           icon: m.icon,
           title: m.title,
           subtitle: m.subtitle,
-          selected: controller.liteRtPerformanceMode.value == m.value,
-          onTap: () => controller.setLiteRtPerformanceMode(m.value),
+          selected: controller.performanceMode.value == m.value,
+          onTap: () => controller.setPerformanceMode(m.value),
         ),
       Padding(
         padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
         child: Text(
-            'Applies to both GGUF and LiteRT models. Takes effect the next '
-            'time a model is loaded.',
+            'Takes effect the next time a model is loaded.',
             style: t.small),
       ),
     ]);
@@ -672,16 +657,8 @@ class SettingsView extends GetView<SettingsController> {
         warning: 'Your phone may crash with this value!',
       ),
       (() {
-        final inference = Get.find<InferenceService>();
-        final savedRuntime = Get.find<HiveService>()
-                .getSetting<String>(AppConstants.keyLocalModelRuntime) ??
-            '';
-        final isLiteRtActive = (inference.isModelLoaded.value &&
-                inference.loadedModelRuntime.value == 'litert') ||
-            (!inference.isModelLoaded.value &&
-                savedRuntime.toLowerCase() == 'litert');
-        final maxContext = isLiteRtActive ? 4096.0 : 8192.0;
-        final divisions = isLiteRtActive ? 7 : 15;
+        const maxContext = 8192.0;
+        const divisions = 15;
         final currentValue =
             controller.contextSize.value.toDouble().clamp(512.0, maxContext);
 
@@ -701,9 +678,7 @@ class SettingsView extends GetView<SettingsController> {
           safeMax: Get.find<DeviceInfoService>().maxSafeContextSize.toDouble(),
           onChanged: (v) => controller.setContextSize(v.toInt()),
           displayValue: currentValue.toInt().toString(),
-          warning: isLiteRtActive
-              ? 'Context capped at 4096 to prevent driver memory crash for LiteRT models.'
-              : 'Context this large will eat all your RAM!',
+          warning: 'Context this large will eat all your RAM!',
         );
       })(),
     ]);
@@ -757,121 +732,7 @@ class SettingsView extends GetView<SettingsController> {
     );
   }
 
-  Widget _buildImageGenerationGroup(BuildContext context) {
-    final t = AppTokens.of(context);
-    final stepsValue = controller.imageSteps.value.toDouble();
-    const safeMax = 8.0;
-    final isOver = stepsValue > safeMax;
-    final selectedBackend = controller.imageGenBackend.value;
-    final gpuBackend = controller.recommendedImageGpuBackend();
-    final gpuAvailable = gpuBackend != Backend.cpu;
-    final size = controller.imageGenSize.value;
-    final guard = controller.imageGenGpuGuardMb.value;
 
-    return AppGroup(children: [
-      // Steps
-      _sliderRow(
-        context,
-        label: 'Steps',
-        valueLabel: controller.imageSteps.value.toString(),
-        value: stepsValue.clamp(1, 50),
-        min: 1,
-        max: 50,
-        divisions: 49,
-        color: isOver ? t.orange : null,
-        caption: 'Recommended: 15-20 steps',
-        onChanged: (v) => controller.setImageSteps(v.toInt()),
-        below: [
-          if (isOver)
-            AppNotice('More steps = better quality but MUCH slower!',
-                icon: Icons.warning_amber_rounded, color: t.orange),
-        ],
-      ),
-
-      // Size
-      Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Expanded(child: Text('Image size', style: t.body)),
-            Text(size == 0 ? 'Auto' : '${size}px',
-                style: t.body.copyWith(color: t.muted, fontFeatures: _tabular)),
-          ]),
-          const SizedBox(height: 12),
-          AppChips<int>(
-            items: const [
-              (0, 'Auto'),
-              (256, '256'),
-              (320, '320'),
-              (384, '384'),
-              (512, '512'),
-            ],
-            selected: size,
-            onSelected: (v) => controller.setImageGenSize(v),
-          ),
-          const SizedBox(height: 10),
-          Text(
-              'Auto recommended. Bigger size = better detail, but much slower and more memory use.',
-              style: t.small),
-          if (size >= 512) ...[
-            const SizedBox(height: 10),
-            AppNotice(
-                '512 gives more detail but can be MUCH slower, heat the phone, and may fail on some devices.',
-                icon: Icons.warning_amber_rounded,
-                color: t.orange),
-          ],
-        ]),
-      ),
-
-      // GPU safety
-      _sliderRow(
-        context,
-        label: 'GPU safety',
-        valueLabel: guard <= 0 ? 'Off' : '$guard MB',
-        value: guard.toDouble().clamp(0, 4096),
-        min: 0,
-        max: 4096,
-        divisions: 16,
-        caption:
-            'Models at or above this size use CPU. Smaller models can use GPU Experimental.',
-        onChanged: (v) => controller.setImageGenGpuGuardMb(v.toInt()),
-        below: [
-          if (guard <= 0 || guard >= 2048)
-            AppNotice(
-                guard <= 0
-                    ? 'GPU Safety is off. Large models may crash or freeze on GPU.'
-                    : 'High GPU Safety allows larger models on GPU and may crash, freeze, or overheat some phones.',
-                icon: Icons.warning_amber_rounded,
-                color: t.orange),
-        ],
-      ),
-
-      // Backend
-      Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Backend', style: t.body),
-          const SizedBox(height: 2),
-          Text(controller.imageGpuLabel(), style: t.caption),
-          const SizedBox(height: 12),
-          AppSegmented<bool>(
-            items: const [(false, 'CPU'), (true, 'GPU')],
-            selected: selectedBackend != Backend.cpu,
-            onChanged: (useGpu) {
-              if (useGpu == (selectedBackend != Backend.cpu)) return;
-              if (useGpu && !gpuAvailable) return;
-              controller.setImageBackendMode(useGpu);
-            },
-          ),
-          if (selectedBackend != Backend.cpu) ...[
-            const SizedBox(height: 10),
-            Text('GPU is experimental and only used below GPU Safety size.',
-                style: t.small.copyWith(color: t.orange)),
-          ],
-        ]),
-      ),
-    ]);
-  }
 }
 
 /// A settings section on its own page. Rebuilds with the controller state.

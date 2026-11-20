@@ -176,19 +176,17 @@ class OpenAiServerService {
   Future<void> _handleCapabilities(HttpRequest request) async {
     final inference = Get.find<InferenceService>();
     final hasModel = inference.isModelLoaded.value;
-    final isLiteRt = hasModel && inference.loadedModelRuntime.value == 'litert';
     await _json(request, {
       'server': 'AI Chat Local OpenAI API',
       'running': true,
       'model': hasModel ? inference.loadedModelName.value : null,
       'runtime': inference.loadedModelRuntime.value,
-      'requires_litert': false,
       'capabilities': {
         'text': hasModel,
-        'image': isLiteRt && inference.isVisionLoaded.value,
-        'audio': isLiteRt,
+        'image': hasModel && inference.ggufVisionLoaded,
+        'audio': false,
         'streaming': hasModel,
-        'gguf': hasModel && !isLiteRt,
+        'gguf': hasModel,
       },
     });
   }
@@ -340,7 +338,7 @@ class OpenAiServerService {
 
   String? _localModelError(InferenceService inference) {
     if (!inference.isModelLoaded.value) {
-      return 'No local model loaded. Load a GGUF or LiteRT-LM model first.';
+      return 'No local model loaded. Load a GGUF model first.';
     }
     return null;
   }

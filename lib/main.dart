@@ -6,13 +6,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:get/get.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-// import 'firebase_options.dart';
 import 'controllers/settings_controller.dart';
 import 'controllers/cloud_model_controller.dart';
 import 'controllers/server_controller.dart';
 import 'controllers/model_controller.dart';
 import 'core/theme.dart';
-//////
 import 'core/routes.dart';
 import 'services/hive_service.dart';
 import 'services/inference_service.dart';
@@ -21,10 +19,7 @@ import 'services/cloud_service.dart';
 import 'services/download_service.dart';
 import 'services/update_service.dart';
 import 'services/device_info_service.dart';
-import 'services/local_image_service.dart';
 import 'services/app_log_service.dart';
-import 'services/crash_reporting_service.dart';
-import 'services/image_generation_notification_service.dart';
 import 'core/constants.dart';
 
 void main() {
@@ -44,15 +39,6 @@ void main() {
     appLogBuffer.clear();
 
     appLog.info('App started');
-
-    // Initialize Firebase before any Firebase-dependent services
-    try {
-      // await Firebase.initializeApp(
-      //   options: DefaultFirebaseOptions.currentPlatform,
-      // );
-    } catch (e) {
-      appLog.error('[Firebase] Initialization failed', details: e);
-    }
 
     // Support phones and tablets in portrait or landscape.
     if (!kIsWeb) {
@@ -91,38 +77,20 @@ void main() {
     Get.put(CloudService());
     Get.put(DownloadService());
     if (UpdateService.isSupported) Get.put(UpdateService(), permanent: true);
-    Get.put(LocalImageService());
-    final crashReporting = await Get.putAsync(() => CrashReportingService().init().timeout(
-          const Duration(seconds: 10),
-          onTimeout: () {
-            appLog.error('CrashReportingService.init timed out');
-            return CrashReportingService();
-          },
-        ));
     FlutterError.onError = (details) {
       FlutterError.presentError(details);
       appLog.error(
         details.exceptionAsString(),
         details: details.stack?.toString() ?? 'No stack',
       );
-      crashReporting.recordFlutterFatal(details);
     };
     PlatformDispatcher.instance.onError = (error, stack) {
       appLog.error(
         error.toString(),
         details: stack.toString(),
       );
-      crashReporting.recordFatal(error, stack, reason: 'platform_dispatcher');
       return true;
     };
-    final imageNotifications = Get.put(ImageGenerationNotificationService());
-    try {
-      await imageNotifications.init();
-      await imageNotifications.configureBackgroundService();
-    } catch (e) {
-      appLog.error('[Notifications] Init failed', details: e);
-    }
-    appLog.info('Notifications initialized');
     Get.put(ServerController(), permanent: true);
     Get.put(ModelController());
     appLog.info('All services initialized, launching app');
@@ -145,10 +113,6 @@ void main() {
         'Uncaught zone error: $error',
         details: stack.toString(),
       );
-    }
-    if (Get.isRegistered<CrashReportingService>()) {
-      await Get.find<CrashReportingService>()
-          .recordFatal(error, stack, reason: 'run_zoned_guarded');
     }
   }, zoneSpecification: ZoneSpecification(
     print: (self, parent, zone, line) {
@@ -178,21 +142,6 @@ void _validateLastModel() async {
     if (!await downloadService.isModelDownloaded(textModelName)) {
       await hive.setSetting(AppConstants.keyLocalModelPath, '');
       await hive.setSetting(AppConstants.keyLocalModelName, '');
-    }
-  }
-
-  // Validate last image model
-  final imageModelName =
-      hive.getSetting<String>(AppConstants.keyImageModelName);
-  final imageModelPath =
-      hive.getSetting<String>(AppConstants.keyImageModelPath);
-  if (imageModelName != null &&
-      imageModelName.isNotEmpty &&
-      imageModelPath != null &&
-      imageModelPath.isNotEmpty) {
-    if (!await downloadService.isModelDownloaded(imageModelName)) {
-      await hive.setSetting(AppConstants.keyImageModelPath, '');
-      await hive.setSetting(AppConstants.keyImageModelName, '');
     }
   }
 }
