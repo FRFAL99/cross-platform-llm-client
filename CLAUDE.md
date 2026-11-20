@@ -39,4 +39,4 @@ Privacy is the product. Nothing should leave the device unless the user picked a
 
 - Commits follow Conventional Commits with a scope, e.g. `feat(cluster): ...`, `fix(cloud): ...`, `chore: ...`.
 - Work on a branch and open a PR against `main`; keep PRs focused.
-- Run `flutter analyze` and `flutter test` before pushing. Tests live in `test/` and use Hive in a temp directory. Nobody has built the iOS/macOS apps since the cleanup: run `pod install` and an Xcode build before an iOS release.
+- Run `flutter analyze` and `flutter test` before pushing. CI (`.github/workflows/android.yml`) builds every PR; a `vX.Y.Z` tag matching `pubspec.yaml` publishes signed APKs to GitHub Releases (needs the `ANDROID_KEY*` secrets). Tests live in `test/` and use Hive in a temp directory. Nobody has built the iOS/macOS apps since the cleanup: run `pod install` and an Xcode build before an iOS release.
