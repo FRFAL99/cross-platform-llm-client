@@ -3,8 +3,6 @@ import 'package:get/get.dart';
 import '../controllers/settings_controller.dart';
 import '../core/constants.dart';
 import '../core/ui.dart';
-import '../widgets/home_empty_state.dart' show providerLabel;
-import '../services/inference_service.dart';
 import '../services/update_service.dart';
 import '../services/device_info_service.dart';
 import '../services/device_info_native.dart' as platform_info;
@@ -56,15 +54,6 @@ class SettingsView extends GetView<SettingsController> {
             AppGroup(dividerIndent: 60, children: [
               _navRow(
                 context,
-                icon: Icons.memory_rounded,
-                title: 'Inference mode',
-                value: controller.inferenceMode.value == 'local'
-                    ? 'Local'
-                    : 'Cloud',
-                builder: (ctx) => _buildInferenceGroup(ctx),
-              ),
-              _navRow(
-                context,
                 icon: Icons.chat_bubble_outline_rounded,
                 title: 'System prompt',
                 value: controller.globalSystemPrompt.value.trim().isEmpty
@@ -110,7 +99,8 @@ class SettingsView extends GetView<SettingsController> {
                         ClusterRole.worker => 'Worker',
                         ClusterRole.off => 'Off',
                       },
-                      style: AppTokens.of(context).caption.copyWith(fontSize: 14)),
+                      style:
+                          AppTokens.of(context).caption.copyWith(fontSize: 14)),
                   chevron: true,
                   onTap: () => Get.to(() => const ClusterView()),
                 ),
@@ -210,25 +200,6 @@ class SettingsView extends GetView<SettingsController> {
     ]);
   }
 
-  Widget _buildInferenceGroup(BuildContext context) {
-    return AppGroup(dividerIndent: 60, children: [
-      AppRow(
-        icon: Icons.phone_iphone_rounded,
-        title: 'Local (on-device)',
-        subtitle: _localSubtitle(),
-        selected: controller.inferenceMode.value == 'local',
-        onTap: () => controller.setInferenceMode('local'),
-      ),
-      AppRow(
-        icon: Icons.cloud_outlined,
-        title: 'Cloud API',
-        subtitle: providerLabel(controller),
-        selected: controller.inferenceMode.value == 'cloud',
-        onTap: () => controller.setInferenceMode('cloud'),
-      ),
-    ]);
-  }
-
   Widget _buildSystemPromptGroup(BuildContext context) {
     final t = AppTokens.of(context);
     return Column(children: [
@@ -243,7 +214,7 @@ class SettingsView extends GetView<SettingsController> {
       ),
       _fieldFooter(
         context,
-        note: 'Applies to local and cloud models.',
+        note: 'Applies to the chat and the local API server.',
         onSave: () async {
           await controller.setGlobalSystemPrompt(
               controller.globalSystemPromptController.text);
@@ -459,14 +430,6 @@ class SettingsView extends GetView<SettingsController> {
 
   // ── Sections ────────────────────────────────────────────────────────────
 
-  String _localSubtitle() {
-    final inf = Get.find<InferenceService>();
-    if (inf.isModelLoaded.value) {
-      return 'Active: ${inf.loadedModelName.value}';
-    }
-    return 'No model loaded';
-  }
-
   Widget _buildFontSizeRow(BuildContext context) {
     final t = AppTokens.of(context);
     const min = 0.8;
@@ -623,8 +586,7 @@ class SettingsView extends GetView<SettingsController> {
         ),
       Padding(
         padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-        child: Text(
-            'Takes effect the next time a model is loaded.',
+        child: Text('Takes effect the next time a model is loaded.',
             style: t.small),
       ),
     ]);
@@ -730,8 +692,6 @@ class SettingsView extends GetView<SettingsController> {
       ],
     );
   }
-
-
 }
 
 /// A settings section on its own page. Rebuilds with the controller state.

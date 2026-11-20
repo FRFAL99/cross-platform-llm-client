@@ -1,8 +1,16 @@
 # PrivateLM
 
-A private, cross-platform AI chat client built with Flutter. It runs GGUF models on your phone with llama.cpp and can also use cloud providers, giving you full control over where your conversations go.
+Run an LLM on your own phone, or across several phones, and use it from your other apps.
 
-This is a fork of [orailnoor/cross-platform-llm-client](https://github.com/orailnoor/cross-platform-llm-client), trimmed to a small core: local chat, cloud chat and a local OpenAI-compatible server. Image generation, the LiteRT engine, the task runner and Firebase were removed.
+PrivateLM does three things:
+
+1. **Runs GGUF models on the phone** with llama.cpp, using the GPU (Vulkan) when it can and picking settings from the device RAM.
+2. **Splits a model across phones** on the same Wi-Fi (phone cluster), so a model too big for one phone can still run.
+3. **Serves the loaded model as an OpenAI-compatible API**, so your own scripts and apps can use it. It listens on localhost by default; network mode requires an API key.
+
+A chat screen is included to try the model. Everything runs on your devices: there are no cloud providers, analytics or crash reporting.
+
+This is a fork of [orailnoor/cross-platform-llm-client](https://github.com/orailnoor/cross-platform-llm-client), cut down to that core.
 
 ## Install on Android
 
@@ -13,18 +21,15 @@ This is a fork of [orailnoor/cross-platform-llm-client](https://github.com/orail
 
 If you installed the upstream PrivateLM before, uninstall it first: it uses the same package name but a different signing key, so Android refuses to update it.
 
----
+## Use it
 
-## What It Does
+- **Models**: download a GGUF model from the catalogue (Hugging Face) or import a `.gguf` file, then load it.
+- **Phone cluster** (Settings › Phone cluster): on each extra phone choose *Worker*; on the main phone choose *Master* and add each worker by the address it shows (or *Find nearby*). The next model load spreads the layers across the phones. Workers accept unauthenticated connections, so use it only on a trusted Wi-Fi.
+- **API server** (Server tab): start it and point any OpenAI client at `http://<phone>:<port>/v1` (`/v1/chat/completions`, `/v1/completions`, `/v1/models`). Turn on network mode to reach it from other devices on the Wi-Fi; it then requires the API key shown in the app.
 
-- **Local Inference on Android** — Download and run GGUF models directly on your phone using GPU-accelerated inference (Vulkan). No internet required after download.
-- **Cloud Providers** — Switch to OpenAI, Anthropic, Google Gemini, OpenRouter or any OpenAI-compatible endpoint (DeepSeek, Kimi, NVIDIA NIM, Ollama, LM Studio…) when you need more power. They are contacted only once you add an API key.
-- **Local API Server** — Serve the loaded model as an OpenAI-compatible endpoint (localhost by default; network mode requires an API key).
-- **Phone Cluster (experimental)** — Split one GGUF model across phones on the same Wi-Fi; add a worker by entering the address it shows. Workers accept unauthenticated connections, so use it only on a trusted network.
-- **No hidden network calls** — Fonts are bundled, voice input runs on the device, PDF text is extracted on the device (PDFium), and there is no analytics or crash reporting.
-- **Multimodal Chat** — Send text and images in conversations. Vision support works with both local models (Qwen2-VL) and cloud providers.
-- **Persistent Sessions** — All chats and settings are stored locally via Hive; API keys go to the OS secure storage (Keystore/Keychain). Nothing leaves your device unless you explicitly choose cloud mode.
-- **Smart Auto-Configuration** — On first launch, the app detects your device's RAM and recommends optimal context size and token limits automatically.
+## Network use
+
+The app only goes online when you ask it to: downloading a model from Hugging Face, checking for updates on GitHub, and the cluster and server on your local network. Fonts are bundled, voice input runs on the device and PDF text is extracted on the device.
 
 ---
 
@@ -32,81 +37,27 @@ If you installed the upstream PrivateLM before, uninstall it first: it uses the 
 
 ### Stack
 
-- **Framework:** Flutter 3.x (Dart >=3.3.0)
+- **Framework:** Flutter 3.47.9, Dart 3.13
 - **State Management:** GetX
-- **Local Storage:** Hive
-- **Networking:** Dio + `package:http`
+- **Local Storage:** Hive (chat messages in a lazy box with a per-chat index; images as files)
+- **Networking:** Dio (downloads) + `package:http`
 
-### Inference Pipeline
+### Layout
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        UI Layer                              │
-│   ChatView / ModelView / ServerView / SettingsView          │
-└──────────────────────────┬──────────────────────────────────┘
-                           │
-┌──────────────────────────▼──────────────────────────────────┐
-│                    Controllers (GetX)                        │
-│   ChatController · ModelController · ServerController       │
-│   SettingsController · HomeController                       │
-└──────────────────────────┬──────────────────────────────────┘
-                           │
-┌──────────────────────────▼──────────────────────────────────┐
-│                      Services                                │
-│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────┐ │
-│  │ InferenceService│  │  CloudService   │  │DownloadSvc  │ │
-│  │  (local GGUF)   │  │ (OpenAI/Claude/ │  │ (model dl)  │ │
-│  │                 │  │ Gemini/custom)  │  │             │ │
-│  └─────────────────┘  └─────────────────┘  └─────────────┘ │
-│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────┐ │
-│  │  HiveService    │  │ DeviceInfoSvc   │  │ UpdateSvc   │ │
-│  │  ( persistence) │  │  (RAM/GPU tier) │  │ (GH release)│ │
-│  └─────────────────┘  └─────────────────┘  └─────────────┘ │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Local Inference (Android)
-
-The app uses `llama_flutter_android`, a custom Flutter plugin wrapping `llama.cpp` for ARM64 devices. At runtime it:
-
-1. **Detects GPU capabilities** via Vulkan to determine offload layers.
-2. **Selects thread count** based on device tier (ultra / high / mid / low).
-3. **Loads the GGUF model** with progress streaming.
-4. **Generates tokens** via `generateChat()` with native chat-template support (ChatML, Llama-3, Gemma, Phi).
-5. **Falls back** to manual prompt construction if native templates fail.
-
-Idle detection (5s) and hard timeouts (180s) keep the UX responsive even on underpowered hardware.
-
-### Cloud Inference
-
-`CloudService` normalizes three API shapes into a single interface:
-
-- **OpenAI** — standard `/v1/chat/completions`
-- **Anthropic** — Messages API with separate system param
-- **Google Gemini** — `generateContent` with inline image base64
-- **OpenRouter and Custom API** — any OpenAI-compatible endpoint, with your own base URL
-
-API keys are stored in the OS secure storage (Android Keystore / iOS Keychain) and never transmitted anywhere except to the provider's endpoint.
-
-### Cross-Platform Abstraction
-
-Local inference is conditionally compiled:
-
-- **Android** → `inference_android.dart` (full llama.cpp engine)
-- **Web** → `inference_stub.dart` (cloud-only, local coming soon)
-- **iOS** → `inference_android.dart` (full llama.cpp engine via Metal GPU)
-
-The `InferenceService` exposes `supportsLocalInference` so the UI can hide local-model UI on unsupported platforms.
+- `InferenceService` → `inference_android.dart`: llama.cpp through `local_plugins/llama_flutter_android` (Vulkan GPU offload, device-tier thread count, native chat templates, vision projectors).
+- `ClusterService`: llama.cpp RPC workers and layer split across phones.
+- `OpenAIServerService`: the OpenAI-compatible HTTP server.
+- `DownloadService`, `HiveService`, `DeviceInfoService`, `UpdateService`.
 
 ---
 
 ## Supported Platforms
 
-| Platform | Local Inference | Cloud APIs | Notes                           |
-| -------- | --------------- | ---------- | ------------------------------- |
-| Android  | ✅ Yes          | ✅ Yes     | CPU offload via NEON; minSdk 28 |
-| iOS      | ✅ Yes          | ✅ Yes     | Metal GPU acceleration          |
-| Web      | ❌ No           | ✅ Yes     | Cloud-only (local coming soon)  |
+| Platform | Local Inference | Notes                                              |
+| -------- | --------------- | -------------------------------------------------- |
+| Android  | ✅ Yes          | Main target; minSdk 28                             |
+| iOS      | ✅ Yes          | Metal GPU; not built since the cleanup, can be a cluster worker |
+| Web      | ❌ No           | No local inference                                 |
 
 ### iOS / iPad (Installation via AltServer)
 The iOS/iPad release is distributed as a sideloadable IPA file. Due to the RAM requirements for local models, iPad is the recommended iOS target, but it can be installed on iPhones.

@@ -4,13 +4,15 @@ Context for working on this repository. The owner is Francesco (GitHub `FRFAL99`
 
 ## What this is
 
-PrivateLM: a Flutter chat client for LLMs, forked from `orailnoor/cross-platform-llm-client`. This fork is being cleaned up and refocused on a small, private, reliable core:
+PrivateLM: a Flutter app, forked from `orailnoor/cross-platform-llm-client`, with one purpose:
 
-- **Local chat** with GGUF models via llama.cpp (`local_plugins/llama_flutter_android`), GPU offload (Vulkan) and automatic settings from the device RAM.
-- **Cloud providers** through one OpenAI-compatible streaming client (`CloudService`), plus Anthropic and Gemini.
-- **Local OpenAI-compatible server** (`openai_server_service_io.dart`): localhost only by default; network mode requires an API key.
+1. **Run a model on the phone**: GGUF via llama.cpp (`local_plugins/llama_flutter_android`), GPU offload (Vulkan), automatic settings from the device RAM.
+2. **Run it across a cluster of phones** (`ClusterService`, llama.cpp RPC over the same Wi-Fi).
+3. **Serve it** as an OpenAI-compatible API (`openai_server_service_io.dart`) so Francesco's own apps and scripts can use it: localhost by default, network mode requires an API key.
 
-Privacy is the product. Nothing should leave the device unless the user picked a cloud provider.
+The chat screen exists to try the model. Anything else is out of scope (Francesco, 2026-11-20): no cloud providers, no features unrelated to running and serving the local model. Ask before adding something that doesn't serve these three points.
+
+Everything runs on the user's devices. The only network calls are the ones the user starts: model downloads (Hugging Face), the manual update check (GitHub), and the cluster and server on the local network.
 
 ## Stack and layout
 
@@ -21,21 +23,23 @@ Privacy is the product. Nothing should leave the device unless the user picked a
 
 ## Rules and decisions
 
-- **Secrets**: API keys never go in plain Hive. `HiveService.secretKeys` routes them to `flutter_secure_storage` (Keystore/Keychain); add any new credential setting to that set.
+- **No cloud providers**: OpenAI, Anthropic, Gemini, OpenRouter and custom endpoints were removed (CloudService, cloud model picker, inference mode). Don't bring them back.
+- **Secrets**: credentials never go in plain Hive. `HiveService.secretKeys` (today only the server API key) routes them to `flutter_secure_storage` (Keystore/Keychain); add any new credential setting to that set.
 - **Updates**: in-app updates read GitHub Releases of `AppConstants.githubRepo`, which must point to this fork. The automatic check is off by default; the user checks manually.
-- **No hidden network calls**: nothing contacts a third party unless the user set it up. Fonts (Inter, Fira Code) are bundled in `assets/fonts` (no `google_fonts`), speech-to-text is on-device only, PDF text uses `pdfrx` (PDFium) instead of Syncfusion, and the cluster pairs by IP (no camera/ML Kit QR scanner). Don't add analytics, crash reporting or packages that fetch at runtime.
-- **Cloud providers**: OpenAI, Anthropic, Gemini, OpenRouter and Custom API (any OpenAI-compatible endpoint). The Kimi, NVIDIA and DeepSeek presets were removed: use Custom API for them.
-- **Removed, don't bring back**: Task/ExecutionService (let the LLM run ADB shell commands), image generation (Stable Diffusion, Core ML, Stability AI), the LiteRT engine, Firebase/Crashlytics, the boot receiver.
+- **No hidden network calls**: fonts (Inter, Fira Code) are bundled in `assets/fonts` (no `google_fonts`), speech-to-text is on-device only, PDF text uses `pdfrx` (PDFium) instead of Syncfusion, and the cluster pairs by IP (no camera/ML Kit QR scanner). Don't add analytics, crash reporting or packages that fetch at runtime.
+- **Removed, don't bring back**: cloud providers, Task/ExecutionService (let the LLM run ADB shell commands), image generation (Stable Diffusion, Core ML, Stability AI), the LiteRT engine, Firebase/Crashlytics, the boot receiver.
 - One local engine only: llama.cpp with GGUF models.
-- **Phone cluster** (`ClusterService`, llama.cpp RPC across phones on the same Wi-Fi) stays for now, off by default. Its RPC workers have no authentication, so use it only on a trusted network. No new work on it until the PC connection (Ollama / LM Studio) exists; then decide whether to keep it.
-- Removed features' Hive keys are deleted on startup (`HiveService._removedFeatureKeys`).
+- **Phone cluster** is core. Its RPC workers have no authentication, so it is only for a trusted network; adding authentication is on the roadmap.
+- **Chat storage**: messages live in a Hive `LazyBox` with a chatId → message ids index box; images are files under `chat_images/` (see `ChatImageStore`). Bump `HiveService._messageStorageVersion` and extend `_migrateMessages` when the layout changes.
+- Removed features' Hive keys are deleted on startup (`HiveService._removedFeatureKeys`, `_removedSecretKeys`).
 - New settings keys go in `AppConstants`. `HiveService.init` wipes unknown `server_*` keys: register new ones there.
 
 ## Roadmap (agreed order)
 
-1. Cleanup and security (done in the first cleanup PR): auto-update target, secure API keys, dead code, image generation, LiteRT, Firebase. Still open: the "uncensored" models in the catalogue.
-2. Fixes: trim cloud chat history to the context window; streaming for Anthropic and Gemini; Hive message storage that doesn't scan every message of every chat (and images out of messages); split huge files (`model_view.dart`, `chat_view.dart`, `model_controller.dart`).
-3. Features, most useful first: connect to Ollama / LM Studio on the home network; chat with documents (PDF extraction exists, add retrieval); local-only switch that blocks all network calls; context management (sliding window, auto-summary); profiles (system prompt + parameters); chat search and Markdown export; on-device tokens/s benchmark.
+1. Done: cleanup and security, privacy pass (no hidden Google calls), removal of cloud providers, faster chat storage. Still open: the "uncensored" models in the catalogue; splitting huge files (`model_view.dart`, `chat_view.dart`, `model_controller.dart`).
+2. Server: make it solid for other apps (streaming, tool/function calling if the model supports it, keep running in the background, clear connection info and examples).
+3. Cluster: authentication for RPC workers, reliability when a worker drops, clearer setup.
+4. Then: on-device tokens/s benchmark (phone and cluster), context management for long chats.
 
 ## Working conventions
 

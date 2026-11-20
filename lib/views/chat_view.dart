@@ -118,7 +118,8 @@ class ChatView extends GetView<ChatController> {
           return Padding(
             padding: const EdgeInsets.only(right: 16),
             child: Text('PrivateLM',
-                style: TextStyle(fontFamily: 'Inter',
+                style: TextStyle(
+                    fontFamily: 'Inter',
                     fontWeight: FontWeight.w700,
                     fontSize: 18,
                     letterSpacing: -0.5,
@@ -143,7 +144,8 @@ class ChatView extends GetView<ChatController> {
                   Text(title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontFamily: 'Inter',
+                      style: TextStyle(
+                          fontFamily: 'Inter',
                           fontWeight: FontWeight.w600,
                           fontSize: 16,
                           letterSpacing: -0.3,
@@ -160,7 +162,8 @@ class ChatView extends GetView<ChatController> {
                       child: Text(info.name,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontFamily: 'Inter',
+                          style: TextStyle(
+                              fontFamily: 'Inter',
                               fontSize: 12.5,
                               color: Theme.of(context).hintColor)),
                     ),
@@ -216,22 +219,12 @@ class ChatView extends GetView<ChatController> {
   /// Name and status colour of whatever will answer the next message.
   ({String name, String meta, Color dot, bool canUnload}) _modelInfo(
       BuildContext context) {
-    final settings = Get.find<SettingsController>();
     final inf = Get.find<InferenceService>();
     const green = Color(0xFF34C759);
     const orange = Color(0xFFFF9500);
-    String pretty(String n) => n.replaceAll(
-        RegExp(r'\.(gguf|bin)$', caseSensitive: false), '');
+    String pretty(String n) =>
+        n.replaceAll(RegExp(r'\.(gguf|bin)$', caseSensitive: false), '');
 
-    if (settings.inferenceMode.value != 'local') {
-      final m = settings.selectedCloudModelName;
-      return (
-        name: m.isEmpty ? 'No model selected' : m,
-        meta: 'Cloud · ${providerLabel(settings)}',
-        dot: _appleBlue(context),
-        canUnload: false,
-      );
-    }
     if (inf.isLoadingModel.value) {
       return (
         name: 'Loading model…',
@@ -267,9 +260,7 @@ class ChatView extends GetView<ChatController> {
   ({int used, int total, double pct})? _contextUsage() {
     final settings = Get.find<SettingsController>();
     final inf = Get.find<InferenceService>();
-    if (settings.inferenceMode.value != 'local' || !inf.isModelLoaded.value) {
-      return null;
-    }
+    if (!inf.isModelLoaded.value) return null;
     final total = inf.contextTokensTotal.value > 0
         ? inf.contextTokensTotal.value
         : settings.contextSize.value;
@@ -317,7 +308,8 @@ class ChatView extends GetView<ChatController> {
                 ),
                 const SizedBox(height: 18),
                 Text('Model',
-                    style: TextStyle(fontFamily: 'Inter',
+                    style: TextStyle(
+                        fontFamily: 'Inter',
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
                         color: muted)),
@@ -325,7 +317,8 @@ class ChatView extends GetView<ChatController> {
                 Text(info.name,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontFamily: 'Inter',
+                    style: TextStyle(
+                        fontFamily: 'Inter',
                         fontSize: 18,
                         fontWeight: FontWeight.w600,
                         letterSpacing: -0.3,
@@ -340,7 +333,8 @@ class ChatView extends GetView<ChatController> {
                   const SizedBox(width: 6),
                   Flexible(
                     child: Text(info.meta,
-                        style: TextStyle(fontFamily: 'Inter', fontSize: 13, color: muted)),
+                        style: TextStyle(
+                            fontFamily: 'Inter', fontSize: 13, color: muted)),
                   ),
                 ]),
                 if (usage != null) ...[
@@ -348,13 +342,15 @@ class ChatView extends GetView<ChatController> {
                   Row(children: [
                     Expanded(
                       child: Text('Context',
-                          style: TextStyle(fontFamily: 'Inter',
+                          style: TextStyle(
+                              fontFamily: 'Inter',
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
                               color: muted)),
                     ),
                     Text('${_fmtK(usage.used)} / ${_fmtK(usage.total)} tokens',
-                        style: TextStyle(fontFamily: 'Inter',
+                        style: TextStyle(
+                            fontFamily: 'Inter',
                             fontSize: 13,
                             color: warn ? const Color(0xFFFF9500) : muted,
                             fontFeatures: const [
@@ -376,7 +372,8 @@ class ChatView extends GetView<ChatController> {
                   if (warn) ...[
                     const SizedBox(height: 8),
                     Text('Almost full. Start a new chat for best results.',
-                        style: TextStyle(fontFamily: 'Inter', fontSize: 12.5, color: muted)),
+                        style: TextStyle(
+                            fontFamily: 'Inter', fontSize: 12.5, color: muted)),
                   ],
                 ],
                 const SizedBox(height: 24),
@@ -420,13 +417,15 @@ class ChatView extends GetView<ChatController> {
           Row(children: [
             Expanded(
               child: Text('Loading model',
-                  style: TextStyle(fontFamily: 'Inter',
+                  style: TextStyle(
+                      fontFamily: 'Inter',
                       fontSize: 12.5,
                       color: Theme.of(context).hintColor,
                       fontWeight: FontWeight.w500)),
             ),
             Text('$pct%',
-                style: TextStyle(fontFamily: 'Inter',
+                style: TextStyle(
+                    fontFamily: 'Inter',
                     fontSize: 12.5,
                     color: Theme.of(context).hintColor,
                     fontFeatures: const [FontFeature.tabularFigures()])),
@@ -493,7 +492,8 @@ class ChatView extends GetView<ChatController> {
                 alignment: Alignment.centerLeft,
                 child: Text(
                     '${inf.tokensPerSecond.value.toStringAsFixed(1)} tok/s',
-                    style: TextStyle(fontFamily: 'Inter',
+                    style: TextStyle(
+                        fontFamily: 'Inter',
                         fontSize: 12,
                         color:
                             Theme.of(context).hintColor.withValues(alpha: 0.8),
@@ -518,7 +518,8 @@ class ChatView extends GetView<ChatController> {
       const SizedBox(width: 10),
       Flexible(
           child: Text(msg,
-              style: TextStyle(fontFamily: 'Inter',
+              style: TextStyle(
+                  fontFamily: 'Inter',
                   fontSize: 12,
                   color: Theme.of(context).hintColor,
                   fontWeight: FontWeight.w400))),
@@ -571,7 +572,8 @@ class ChatView extends GetView<ChatController> {
                     _PulsingDot(),
                     SizedBox(width: 8),
                     Text('Listening… tap mic to stop',
-                        style: TextStyle(fontFamily: 'Inter',
+                        style: TextStyle(
+                            fontFamily: 'Inter',
                             fontSize: 12,
                             color: Color(0xFFFF3B30),
                             fontWeight: FontWeight.w500)),
@@ -595,33 +597,20 @@ class ChatView extends GetView<ChatController> {
                 ),
                 child:
                     Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                  // Attach button (image + file) — shown for cloud & local vision
+                  // Attach button: documents for any loaded model, photos
+                  // too when it has a vision projector.
                   Obx(() {
-                    final s = Get.find<SettingsController>();
                     final inf = Get.find<InferenceService>();
-                    final isCloud = s.inferenceMode.value == 'cloud';
-                    // GGUF models with a vision projector can take photos.
-                    final isLocalVision = s.inferenceMode.value == 'local' &&
-                        inf.isVisionLoaded.value;
-                    // Audio files only work with cloud models.
-                    final audioOk = isCloud;
-                    // Any local text model can read documents: their text is
-                    // extracted and inlined into the prompt.
-                    final isLocalText = s.inferenceMode.value == 'local' &&
-                        inf.isModelLoaded.value;
-                    if (!isCloud && !isLocalText) {
+                    if (!inf.isModelLoaded.value) {
                       return const SizedBox.shrink();
                     }
-                    final mediaOk = isCloud || isLocalVision;
                     return _AttachButton(
                       isDark: isDark,
-                      isCloud: isCloud,
-                      allowMedia: mediaOk,
+                      allowMedia: inf.isVisionLoaded.value,
                       onCamera: () =>
                           controller.pickImage(source: ImageSource.camera),
                       onImage: controller.pickImage,
-                      onFile: () =>
-                          controller.pickFile(documentsOnly: !audioOk),
+                      onFile: () => controller.pickFile(documentsOnly: true),
                       context: context,
                     );
                   }),
@@ -629,8 +618,8 @@ class ChatView extends GetView<ChatController> {
                   // Same 40px base height as the buttons so a single line sits
                   // centred; taller multi-line input keeps buttons at the bottom.
                   Expanded(child: Obx(() {
-                    // Local mode with nothing loaded: the field is disabled
-                    // and tapping it goes to Models. Cloud mode is unaffected.
+                    // Nothing loaded: the field is disabled and tapping it
+                    // goes to Models.
                     final noModel = _localModelMissing();
                     final loadingModel =
                         Get.find<InferenceService>().isLoadingModel.value;
@@ -650,7 +639,8 @@ class ChatView extends GetView<ChatController> {
                             onChanged: (v) => controller.inputText.value = v,
                             maxLines: 5,
                             minLines: 1,
-                            style: TextStyle(fontFamily: 'Inter',
+                            style: TextStyle(
+                                fontFamily: 'Inter',
                                 fontSize: 15,
                                 color: isDark ? Colors.white : Colors.black),
                             decoration: InputDecoration(
@@ -659,7 +649,8 @@ class ChatView extends GetView<ChatController> {
                                   : loadingModel
                                       ? 'Loading model…'
                                       : 'Load a model to start chatting',
-                              hintStyle: TextStyle(fontFamily: 'Inter',
+                              hintStyle: TextStyle(
+                                  fontFamily: 'Inter',
                                   fontSize: 15,
                                   color: Theme.of(context).hintColor),
                               border: InputBorder.none,
@@ -750,13 +741,8 @@ class ChatView extends GetView<ChatController> {
     );
   }
 
-  /// Local mode with no model loaded (cloud never counts).
-  bool _localModelMissing() {
-    if (Get.find<SettingsController>().inferenceMode.value != 'local') {
-      return false;
-    }
-    return !Get.find<InferenceService>().isModelLoaded.value;
-  }
+  bool _localModelMissing() =>
+      !Get.find<InferenceService>().isModelLoaded.value;
 
   // ── Markdown styles ──
   MarkdownStyleSheet _streamMd(BuildContext c, bool isDark) =>
@@ -764,15 +750,19 @@ class ChatView extends GetView<ChatController> {
 
   MarkdownStyleSheet _thoughtMd(BuildContext c, bool isDark) {
     final muted = Theme.of(c).hintColor;
-    final base = TextStyle(fontFamily: 'Inter', fontSize: 13, color: muted, height: 1.4);
+    final base =
+        TextStyle(fontFamily: 'Inter', fontSize: 13, color: muted, height: 1.4);
     final codeBg = isDark ? const Color(0xFF2C2C2E) : const Color(0xFFE5E5EA);
     return MarkdownStyleSheet.fromTheme(Theme.of(c)).copyWith(
         p: base,
         strong: base.copyWith(fontWeight: FontWeight.w600),
         em: base.copyWith(fontStyle: FontStyle.italic),
         listBullet: base,
-        code: TextStyle(fontFamily: 'FiraCode',
-            fontSize: 11, color: muted, backgroundColor: codeBg),
+        code: TextStyle(
+            fontFamily: 'FiraCode',
+            fontSize: 11,
+            color: muted,
+            backgroundColor: codeBg),
         codeblockDecoration: BoxDecoration(
             color: codeBg, borderRadius: BorderRadius.circular(10)));
   }
@@ -812,7 +802,6 @@ class ChatView extends GetView<ChatController> {
 // ── Attach Button ──
 class _AttachButton extends StatelessWidget {
   final bool isDark;
-  final bool isCloud;
 
   /// Photos/camera need a vision-capable model; documents work everywhere.
   final bool allowMedia;
@@ -823,7 +812,6 @@ class _AttachButton extends StatelessWidget {
 
   const _AttachButton({
     required this.isDark,
-    required this.isCloud,
     required this.allowMedia,
     required this.onCamera,
     required this.onImage,
@@ -949,15 +937,18 @@ class _AttachButton extends StatelessWidget {
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     Text(it.label,
-                                        style: TextStyle(fontFamily: 'Inter',
+                                        style: TextStyle(
+                                            fontFamily: 'Inter',
                                             fontSize: 16,
                                             fontWeight: FontWeight.w500,
                                             letterSpacing: -0.2,
                                             color: fg)),
                                     if (!it.enabled)
                                       Text('Needs a vision model',
-                                          style: TextStyle(fontFamily: 'Inter',
-                                              fontSize: 12, color: muted)),
+                                          style: TextStyle(
+                                              fontFamily: 'Inter',
+                                              fontSize: 12,
+                                              color: muted)),
                                   ]),
                             ),
                           ]),

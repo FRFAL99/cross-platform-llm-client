@@ -3,11 +3,11 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/foundation.dart' show kIsWeb, LicenseEntryWithLineBreaks, LicenseRegistry;
+import 'package:flutter/foundation.dart'
+    show kIsWeb, LicenseEntryWithLineBreaks, LicenseRegistry;
 import 'package:get/get.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'controllers/settings_controller.dart';
-import 'controllers/cloud_model_controller.dart';
 import 'controllers/server_controller.dart';
 import 'controllers/model_controller.dart';
 import 'core/theme.dart';
@@ -15,7 +15,6 @@ import 'core/routes.dart';
 import 'services/hive_service.dart';
 import 'services/inference_service.dart';
 import 'services/cluster_service.dart';
-import 'services/cloud_service.dart';
 import 'services/download_service.dart';
 import 'services/update_service.dart';
 import 'services/device_info_service.dart';
@@ -78,11 +77,9 @@ void main() {
 
     // Settings controller must be initialized before runApp for theme support
     final settingsController = Get.put(SettingsController());
-    Get.put(CloudModelController());
 
     if (ClusterService.isSupported) Get.put(ClusterService(), permanent: true);
     Get.put(InferenceService());
-    Get.put(CloudService());
     Get.put(DownloadService());
     if (UpdateService.isSupported) Get.put(UpdateService(), permanent: true);
     FlutterError.onError = (details) {

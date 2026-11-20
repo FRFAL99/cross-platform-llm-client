@@ -1,9 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import '../controllers/cloud_model_controller.dart';
 import '../controllers/model_controller.dart';
-import '../controllers/settings_controller.dart';
 import '../core/ui.dart';
 import '../models/ai_model.dart';
 import '../services/download_service.dart';
@@ -11,19 +9,8 @@ import '../services/inference_service.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
 
-String _prettyModel(String name) => name.replaceAll(
-    RegExp(r'\.(gguf|bin)$', caseSensitive: false), '');
-
-/// Input decoration for fields inside sheets. In dark mode the sheet itself
-/// is the default field colour, so use a translucent fill that stays visible.
-InputDecoration _sheetInput(BuildContext context,
-    {String? hint, String? label, Widget? suffix, Widget? prefix}) {
-  final t = AppTokens.of(context);
-  return appInputDecoration(context,
-          hint: hint, label: label, suffix: suffix, prefix: prefix)
-      .copyWith(
-          fillColor: t.isDark ? Colors.white.withValues(alpha: 0.07) : null);
-}
+String _prettyModel(String name) =>
+    name.replaceAll(RegExp(r'\.(gguf|bin)$', caseSensitive: false), '');
 
 /// Surface for grouped content inside a sheet (sheet bg differs from page bg).
 Color _sheetSurface(AppTokens t) =>
@@ -42,9 +29,6 @@ class ModelView extends GetView<ModelController> {
         title: 'Models',
         actions: [
           Obx(() {
-            if (controller.modelScope.value == 'online') {
-              return const SizedBox.shrink();
-            }
             return _TextAction(
               icon: Icons.add_rounded,
               label: 'Import',
@@ -58,9 +42,7 @@ class ModelView extends GetView<ModelController> {
       ),
       body: RefreshIndicator(
         onRefresh: () async {
-          if (controller.modelScope.value != 'online') {
-            await controller.refreshDownloaded();
-          }
+          await controller.refreshDownloaded();
         },
         color: t.accent,
         child: Obx(() {
@@ -75,12 +57,11 @@ class ModelView extends GetView<ModelController> {
               if (scope == 'local') ...[
                 _buildImportingProgress(context),
                 ..._buildLibrary(context),
-              ] else if (scope == 'browse') ...[
+              ] else ...[
                 _buildFeatured(context),
                 _buildLocalFilterChips(context),
                 ..._buildBrowse(context),
-              ] else
-                _buildOnlineProviders(context),
+              ],
             ],
           );
         }),
@@ -93,7 +74,6 @@ class ModelView extends GetView<ModelController> {
           items: const [
             ('local', 'My models'),
             ('browse', 'Browse'),
-            ('online', 'Cloud'),
           ],
           selected: controller.modelScope.value,
           onChanged: (value) => controller.modelScope.value = value,
@@ -168,8 +148,7 @@ class ModelView extends GetView<ModelController> {
     final files = await controller.pickModelFolder();
     if (files == null || !context.mounted) return;
     if (files.isEmpty) {
-      showToast('No models found',
-          'That folder has no .gguf files.',
+      showToast('No models found', 'That folder has no .gguf files.',
           tone: ToastTone.warning);
       return;
     }
@@ -205,12 +184,6 @@ class ModelView extends GetView<ModelController> {
   Widget _buildActiveModelBanner(BuildContext context) {
     return Obx(() {
       final t = AppTokens.of(context);
-      if (controller.modelScope.value == 'online') {
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 16),
-          child: _buildActiveCloudBanner(context),
-        );
-      }
       final inference = Get.find<InferenceService>();
       final busy =
           controller.isImporting.value || inference.isLoadingModel.value;
@@ -249,9 +222,6 @@ class ModelView extends GetView<ModelController> {
   /// helper files), so progress stays visible while browsing the list.
   Widget _buildActiveDownloadsBanner(BuildContext context) {
     return Obx(() {
-      if (controller.modelScope.value == 'online') {
-        return const SizedBox.shrink();
-      }
       final downloads = controller.activeDownloads.values.toList();
       if (downloads.isEmpty) return const SizedBox.shrink();
       final t = AppTokens.of(context);
@@ -360,40 +330,6 @@ class ModelView extends GetView<ModelController> {
         ),
       );
     });
-  }
-
-  Widget _buildActiveCloudBanner(BuildContext context) {
-    final t = AppTokens.of(context);
-    final settings = Get.find<SettingsController>();
-    final cloudModels = Get.find<CloudModelController>();
-    final providerId = settings.cloudProvider.value;
-    final provider =
-        cloudModels.providers.firstWhereOrNull((p) => p.id == providerId);
-    final providerName = providerId == 'custom'
-        ? settings.customCloudName.value
-        : provider?.name ?? providerId;
-    final model = cloudModels.activeModelFor(providerId);
-    final hasSelectedModel =
-        cloudModels.canSelectModel(providerId) && model.isNotEmpty;
-
-    return _ActiveCard(
-      icon: Icons.cloud_outlined,
-      title: hasSelectedModel ? model : 'No online model selected',
-      meta: 'Cloud · $providerName',
-      dot: hasSelectedModel ? t.accent : t.faint,
-      action: PillButton(
-        label: 'Change',
-        onPressed: provider == null
-            ? null
-            : () {
-                if (providerId == 'custom') {
-                  _showCustomProviderSheet(context, cloudModels);
-                } else {
-                  _showProviderActionsSheet(context, cloudModels, provider);
-                }
-              },
-      ),
-    );
   }
 
   // ── Progress ──────────────────────────────────────────────────────────
@@ -538,838 +474,6 @@ class ModelView extends GetView<ModelController> {
   }
 
   // ── Online providers ──────────────────────────────────────────────────
-
-  Widget _buildOnlineProviders(BuildContext context) {
-    final cloud = Get.find<CloudModelController>();
-    return Obx(() {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const SectionHeader('Providers',
-              padding: EdgeInsets.fromLTRB(4, 20, 4, 8)),
-          AppGroup(
-            dividerIndent: 64,
-            children: [
-              for (final provider in cloud.providers)
-                _buildOnlineProviderRow(context, cloud, provider),
-            ],
-          ),
-          const SectionFootnote(
-              'Tap a provider to choose a model. Keys are stored on this device.'),
-        ],
-      );
-    });
-  }
-
-  Widget _buildOnlineProviderRow(
-    BuildContext context,
-    CloudModelController cloud,
-    CloudProviderInfo provider,
-  ) {
-    final t = AppTokens.of(context);
-    final settings = Get.find<SettingsController>();
-    final isCustom = provider.id == 'custom';
-    final isActive = cloud.activeProvider == provider.id;
-    final canUse = cloud.canSelectModel(provider.id);
-    final model = cloud.activeModelFor(provider.id);
-    final hasSelectedModel = canUse && model.isNotEmpty;
-    final name = isCustom ? settings.customCloudName.value : provider.name;
-    final error = cloud.errorByProvider[provider.id];
-    final meta = hasSelectedModel
-        ? model
-        : canUse
-            ? 'No model selected'
-            : cloud.statusLabel(provider.id) == 'Needs Key'
-                ? 'Needs API key'
-                : cloud.statusLabel(provider.id);
-
-    return InkWell(
-      onTap: () => isCustom
-          ? _showCustomProviderSheet(context, cloud)
-          : _openProviderFlow(context, cloud, provider),
-      splashFactory: NoSplash.splashFactory,
-      highlightColor: t.surfacePressed,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 6, 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                IconBadge(provider.icon, size: 36),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              name.isEmpty ? provider.name : name,
-                              style: t.bodyStrong,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          if (isActive && hasSelectedModel) ...[
-                            const SizedBox(width: 8),
-                            AppTag('Active', color: t.accent),
-                          ],
-                        ],
-                      ),
-                      const SizedBox(height: 3),
-                      Row(
-                        children: [
-                          StatusDot(canUse ? t.green : t.faint),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              meta,
-                              style: t.small.copyWith(
-                                  color: hasSelectedModel ? t.text : t.muted),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 4),
-                _IconAction(
-                  icon: Icons.more_horiz_rounded,
-                  tooltip: 'Provider settings',
-                  onPressed: () =>
-                      _showProviderActionsSheet(context, cloud, provider),
-                ),
-              ],
-            ),
-            if (error != null) ...[
-              const SizedBox(height: 10),
-              Padding(
-                padding: const EdgeInsets.only(right: 10),
-                child: _buildErrorBox(context, error),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _openProviderFlow(
-    BuildContext context,
-    CloudModelController cloud,
-    CloudProviderInfo provider,
-  ) async {
-    if (!cloud.canSelectModel(provider.id)) {
-      _showProviderKeyDialog(
-        context,
-        cloud,
-        provider,
-        openModelsAfterSave: true,
-      );
-      return;
-    }
-
-    await cloud.refreshModels(provider.id);
-    if (!context.mounted) return;
-    if ((cloud.errorByProvider[provider.id] ?? '').isNotEmpty) {
-      _showProviderKeyDialog(
-        context,
-        cloud,
-        provider,
-        openModelsAfterSave: true,
-      );
-      return;
-    }
-    _showModelSelectSheet(context, cloud, provider);
-  }
-
-  void _showProviderActionsSheet(
-    BuildContext context,
-    CloudModelController cloud,
-    CloudProviderInfo provider,
-  ) {
-    final settings = Get.find<SettingsController>();
-    final isCustom = provider.id == 'custom';
-
-    showAppSheet<void>(
-      context,
-      builder: (ctx) => Obx(() {
-        final t = AppTokens.of(ctx);
-        final model = cloud.activeModelFor(provider.id);
-        final configured = cloud.isConfigured(provider.id);
-        final name = isCustom ? settings.customCloudName.value : provider.name;
-
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                IconBadge(provider.icon, size: 44),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        name.isEmpty ? provider.name : name,
-                        style: TextStyle(fontFamily: 'Inter',
-                          fontSize: 20,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: -0.5,
-                          color: t.text,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        model.isEmpty ? provider.description : model,
-                        style: t.caption,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            AppGroup(
-              dividerIndent: 60,
-              children: [
-                if (!isCustom)
-                  AppRow(
-                    icon: Icons.key_outlined,
-                    title: configured ? 'Update API key' : 'Add API key',
-                    subtitle: 'Required before selecting live models',
-                    chevron: true,
-                    onTap: () {
-                      Navigator.pop(ctx);
-                      _showProviderKeyDialog(
-                        context,
-                        cloud,
-                        provider,
-                        openModelsAfterSave: true,
-                      );
-                    },
-                  ),
-                AppRow(
-                  icon:
-                      isCustom ? Icons.tune_rounded : Icons.smart_toy_outlined,
-                  title: isCustom ? 'Configure and select' : 'Select model',
-                  subtitle: isCustom
-                      ? 'Set base URL, key, and model ID'
-                      : 'Search provider models or enter a model ID',
-                  chevron: true,
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    if (isCustom) {
-                      _showCustomProviderSheet(context, cloud);
-                    } else {
-                      _openProviderFlow(context, cloud, provider);
-                    }
-                  },
-                ),
-              ],
-            ),
-          ],
-        );
-      }),
-    );
-  }
-
-  void _showProviderKeyDialog(
-    BuildContext context,
-    CloudModelController cloud,
-    CloudProviderInfo provider, {
-    bool openModelsAfterSave = false,
-  }) {
-    final keyController = cloud.apiKeyControllerFor(provider.id);
-    final obscureKey = true.obs;
-    final isVerifying = false.obs;
-
-    showAppSheet<void>(
-      context,
-      title: '${provider.name} API key',
-      subtitle: 'Save the key to verify it and load live models.',
-      builder: (ctx) {
-        final t = AppTokens.of(ctx);
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Obx(
-              () => TextField(
-                controller: keyController,
-                obscureText: obscureKey.value,
-                autocorrect: false,
-                enableSuggestions: false,
-                style: t.mono.copyWith(fontSize: 14),
-                decoration: _sheetInput(
-                  ctx,
-                  hint: 'Paste ${provider.name} key',
-                  prefix: Icon(Icons.key_outlined, size: 18, color: t.muted),
-                  suffix: IconButton(
-                    tooltip: obscureKey.value ? 'Show API key' : 'Hide API key',
-                    onPressed: () => obscureKey.value = !obscureKey.value,
-                    icon: Icon(
-                      obscureKey.value
-                          ? Icons.visibility_outlined
-                          : Icons.visibility_off_outlined,
-                      size: 20,
-                      color: t.muted,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            Obx(() {
-              final error = cloud.errorByProvider[provider.id];
-              if (error == null || error.isEmpty) {
-                return const SizedBox.shrink();
-              }
-              return Padding(
-                padding: const EdgeInsets.only(top: 12),
-                child: _buildErrorBox(ctx, error),
-              );
-            }),
-            const SizedBox(height: 20),
-            Row(
-              children: [
-                Expanded(
-                  child: TonalButton.neutral(ctx,
-                      label: 'Cancel', onTap: () => Navigator.pop(ctx)),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Obx(() => PrimaryButton(
-                        label: isVerifying.value ? 'Verifying' : 'Save key',
-                        busy: isVerifying.value,
-                        onPressed: () async {
-                          final value = keyController.text.trim();
-                          if (value.isEmpty || isVerifying.value) return;
-                          final nav = Navigator.of(ctx);
-                          isVerifying.value = true;
-                          await cloud.saveApiKey(provider.id, value);
-                          await cloud.refreshModels(provider.id);
-                          isVerifying.value = false;
-                          if ((cloud.errorByProvider[provider.id] ?? '')
-                              .isNotEmpty) {
-                            return;
-                          }
-                          if (!ctx.mounted) return;
-                          nav.pop();
-                          if (openModelsAfterSave && context.mounted) {
-                            _showModelSelectSheet(context, cloud, provider);
-                          }
-                        },
-                      )),
-                ),
-              ],
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _showCustomProviderSheet(
-    BuildContext context,
-    CloudModelController cloud,
-  ) {
-    final obscureCustomKey = true.obs;
-    showAppSheet<void>(
-      context,
-      title: 'Custom provider',
-      subtitle:
-          'Use any OpenAI-compatible endpoint. Enter the base URL without /chat/completions.',
-      builder: (ctx) {
-        final t = AppTokens.of(ctx);
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Obx(() {
-              final profiles = cloud.customProfiles;
-              if (profiles.isEmpty) return const SizedBox.shrink();
-              final selected = cloud.customProfileIndex;
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 16),
-                child: AppField(
-                  label: 'Saved provider',
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: DropdownButtonFormField<int>(
-                          key: ValueKey(selected),
-                          initialValue: selected >= 0 ? selected : null,
-                          isExpanded: true,
-                          borderRadius: BorderRadius.circular(12),
-                          dropdownColor:
-                              t.isDark ? const Color(0xFF2C2C2E) : Colors.white,
-                          icon: Icon(Icons.expand_more_rounded,
-                              color: t.muted, size: 20),
-                          style: t.body,
-                          decoration:
-                              _sheetInput(ctx, hint: 'Choose a provider'),
-                          items: [
-                            for (var i = 0; i < profiles.length; i++)
-                              DropdownMenuItem(
-                                value: i,
-                                child: Text(
-                                  profiles[i]['name']?.isNotEmpty == true
-                                      ? profiles[i]['name']!
-                                      : profiles[i]['baseUrl'] ?? 'Custom API',
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                          ],
-                          onChanged: (index) {
-                            if (index != null) {
-                              cloud.selectCustomProfile(index);
-                            }
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      _SquareIconButton(
-                        icon: Icons.add_rounded,
-                        tooltip: 'Add another provider',
-                        onTap: cloud.beginNewCustomProfile,
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            }),
-            Obx(() {
-              final error = cloud.customProviderError.value;
-              if (error.isEmpty) return const SizedBox.shrink();
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 16),
-                child: _buildErrorBox(ctx, error),
-              );
-            }),
-            AppField(
-              label: 'Provider name',
-              child: TextField(
-                controller: cloud.customNameController,
-                style: t.body,
-                decoration: _sheetInput(ctx, hint: 'My endpoint'),
-              ),
-            ),
-            const SizedBox(height: 14),
-            AppField(
-              label: 'Base URL',
-              child: TextField(
-                controller: cloud.customBaseUrlController,
-                keyboardType: TextInputType.url,
-                autocorrect: false,
-                style: t.body,
-                decoration: _sheetInput(ctx, hint: 'https://example.com/v1'),
-              ),
-            ),
-            const SizedBox(height: 14),
-            AppField(
-              label: 'API key',
-              child: Obx(
-                () => TextField(
-                  controller: cloud.customApiKeyController,
-                  obscureText: obscureCustomKey.value,
-                  autocorrect: false,
-                  enableSuggestions: false,
-                  style: t.mono.copyWith(fontSize: 14),
-                  decoration: _sheetInput(
-                    ctx,
-                    hint: 'Optional for local servers',
-                    suffix: IconButton(
-                      tooltip: obscureCustomKey.value
-                          ? 'Show API key'
-                          : 'Hide API key',
-                      onPressed: () =>
-                          obscureCustomKey.value = !obscureCustomKey.value,
-                      icon: Icon(
-                        obscureCustomKey.value
-                            ? Icons.visibility_outlined
-                            : Icons.visibility_off_outlined,
-                        size: 20,
-                        color: t.muted,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 14),
-            AppField(
-              label: 'Model ID',
-              child: TextField(
-                controller: cloud.customModelController,
-                autocorrect: false,
-                style: t.body,
-                decoration: _sheetInput(ctx, hint: 'e.g. llama-3.1-8b'),
-              ),
-            ),
-            const SizedBox(height: 24),
-            PrimaryButton(
-              label: 'Save and select',
-              onPressed: () async {
-                final nav = Navigator.of(ctx);
-                await cloud.saveCustomProvider();
-                if (cloud.customProviderError.value.isEmpty && ctx.mounted) {
-                  nav.pop();
-                }
-              },
-            ),
-            const SizedBox(height: 8),
-            Center(
-              child: Obx(() => _TextAction(
-                    label: cloud.customProfileIndex >= 0
-                        ? 'Remove selected provider'
-                        : 'Clear form',
-                    color: t.red,
-                    onTap: () async {
-                      await cloud.clearCustomProvider();
-                    },
-                  )),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _showModelSelectSheet(
-    BuildContext context,
-    CloudModelController cloud,
-    CloudProviderInfo provider,
-  ) {
-    if (!cloud.canSelectModel(provider.id)) {
-      _showProviderKeyDialog(
-        context,
-        cloud,
-        provider,
-        openModelsAfterSave: true,
-      );
-      return;
-    }
-
-    cloud.searchByProvider[provider.id] = '';
-    if ((cloud.modelsByProvider[provider.id] ?? const <String>[]).isEmpty) {
-      cloud.refreshModels(provider.id);
-    } else if (cloud.canFetchModels(provider.id) &&
-        cloud.fetchedAtByProvider[provider.id] == null) {
-      cloud.refreshModels(provider.id);
-    }
-
-    showAppSheet<void>(
-      context,
-      title: 'Select ${provider.name} model',
-      scrollable: false,
-      builder: (ctx) {
-        final t = AppTokens.of(ctx);
-        final mq = MediaQuery.of(ctx);
-        // Fixed list height that shrinks with the keyboard so the sheet
-        // (handle + title + this body) always fits on screen.
-        final height = ((mq.size.height - mq.viewInsets.bottom) * 0.7 - 80)
-            .clamp(120.0, 900.0);
-
-        return SizedBox(
-          height: height,
-          child: Obx(() {
-            final isLoading = cloud.isLoadingProvider[provider.id] == true;
-            final error = cloud.errorByProvider[provider.id];
-            final models = cloud.filteredModelsFor(provider.id);
-            final activeModel = cloud.activeModelFor(provider.id);
-            final isActiveProvider = cloud.activeProvider == provider.id;
-            final canFetch = cloud.canFetchModels(provider.id);
-            final freeFirst = cloud.freeFirstByProvider[provider.id] == true;
-            final freeModelCount = cloud.freeModelCountFor(provider.id);
-
-            Widget modelList;
-            if (isLoading && models.isEmpty) {
-              modelList = Center(
-                child: SizedBox(
-                  width: 22,
-                  height: 22,
-                  child:
-                      CircularProgressIndicator(strokeWidth: 2, color: t.muted),
-                ),
-              );
-            } else if (models.isEmpty) {
-              modelList = _buildModelSelectEmptyState(ctx, provider);
-            } else {
-              modelList = Container(
-                decoration: BoxDecoration(
-                  color: _sheetSurface(t),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: t.hairline, width: 0.5),
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: ListView.separated(
-                  padding: EdgeInsets.zero,
-                  itemCount: models.length,
-                  separatorBuilder: (_, __) => Padding(
-                    padding: const EdgeInsets.only(left: 16),
-                    child: Container(height: 0.5, color: t.hairline),
-                  ),
-                  itemBuilder: (_, index) => _buildCloudModelRow(
-                    context,
-                    ctx,
-                    cloud,
-                    provider,
-                    models[index],
-                    activeModel,
-                    isActiveProvider,
-                  ),
-                ),
-              );
-            }
-
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                TextField(
-                  onChanged: (value) =>
-                      cloud.searchByProvider[provider.id] = value,
-                  style: t.body,
-                  decoration: _sheetInput(
-                    ctx,
-                    hint: 'Search models',
-                    prefix:
-                        Icon(Icons.search_rounded, size: 20, color: t.muted),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.only(left: 2),
-                        child: Text(
-                          '${models.length} models · ${cloud.fetchedLabel(provider.id)}',
-                          style: t.small.copyWith(fontFeatures: _tabular),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ),
-                    if (provider.id == 'openrouter' || freeModelCount > 0)
-                      _TextAction(
-                        icon: freeFirst
-                            ? Icons.check_circle_rounded
-                            : Icons.local_offer_outlined,
-                        label: freeModelCount == 0
-                            ? 'Free'
-                            : 'Free first ($freeModelCount)',
-                        color: freeFirst ? t.accent : null,
-                        onTap: freeModelCount == 0
-                            ? null
-                            : () => cloud.toggleFreeFirst(provider.id),
-                      ),
-                    _TextAction(
-                      icon: Icons.refresh_rounded,
-                      label: 'Refresh',
-                      busy: isLoading,
-                      onTap: isLoading || !canFetch
-                          ? null
-                          : () => cloud.refreshModels(provider.id),
-                    ),
-                  ],
-                ),
-                if (error != null) ...[
-                  const SizedBox(height: 8),
-                  _buildErrorBox(ctx, error),
-                ],
-                const SizedBox(height: 10),
-                Expanded(child: modelList),
-                const SizedBox(height: 12),
-                TonalButton.neutral(
-                  ctx,
-                  label: 'Use a custom model ID',
-                  onTap: () =>
-                      _showCustomModelIdDialog(context, cloud, provider),
-                ),
-              ],
-            );
-          }),
-        );
-      },
-    );
-  }
-
-  Widget _buildModelSelectEmptyState(
-    BuildContext context,
-    CloudProviderInfo provider,
-  ) {
-    return const Center(
-      child: SingleChildScrollView(
-        child: EmptyState(
-          icon: Icons.inbox_outlined,
-          title: 'No models loaded',
-          message:
-              'Add an API key to update the live list, or use a custom model ID.',
-        ),
-      ),
-    );
-  }
-
-  void _showCustomModelIdDialog(
-    BuildContext context,
-    CloudModelController cloud,
-    CloudProviderInfo provider,
-  ) {
-    final textController =
-        TextEditingController(text: cloud.activeModelFor(provider.id));
-    showAppSheet<void>(
-      context,
-      title: 'Custom ${provider.name} model',
-      subtitle: 'Enter the exact model ID the provider expects.',
-      builder: (ctx) {
-        final t = AppTokens.of(ctx);
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            AppField(
-              label: 'Model ID',
-              child: TextField(
-                controller: textController,
-                autofocus: true,
-                autocorrect: false,
-                style: t.mono.copyWith(fontSize: 14),
-                decoration: _sheetInput(ctx, hint: 'provider/model-name'),
-              ),
-            ),
-            const SizedBox(height: 20),
-            Row(
-              children: [
-                Expanded(
-                  child: TonalButton.neutral(ctx,
-                      label: 'Cancel', onTap: () => Navigator.pop(ctx)),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: PrimaryButton(
-                    label: 'Select',
-                    onPressed: () async {
-                      final value = textController.text.trim();
-                      if (value.isEmpty) return;
-                      if (!cloud.canSelectModel(provider.id)) {
-                        if (provider.id == 'custom') {
-                          _showCustomProviderSheet(context, cloud);
-                        } else {
-                          _showProviderKeyDialog(context, cloud, provider);
-                        }
-                        return;
-                      }
-                      final nav = Navigator.of(ctx);
-                      await cloud.selectModel(
-                        provider.id,
-                        value,
-                        showSnackbar: false,
-                      );
-                      // Close this sheet and the model list underneath it.
-                      nav.pop();
-                      nav.pop();
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _buildCloudModelRow(
-    BuildContext pageContext,
-    BuildContext sheetContext,
-    CloudModelController cloud,
-    CloudProviderInfo provider,
-    String id,
-    String activeModel,
-    bool isActiveProvider,
-  ) {
-    final t = AppTokens.of(sheetContext);
-    final providerId = provider.id;
-    final normalized =
-        providerId == 'google' ? id.replaceFirst('models/', '') : id;
-    final canUse = cloud.canSelectModel(providerId);
-    final isActive = isActiveProvider && normalized == activeModel && canUse;
-    final tags = cloud.modelTagsFor(providerId, id);
-
-    Future<void> select() async {
-      if (!canUse) {
-        _showProviderKeyDialog(pageContext, cloud, provider);
-        return;
-      }
-      final nav = Navigator.of(sheetContext);
-      await cloud.selectModel(
-        providerId,
-        id,
-        showSnackbar: false,
-      );
-      nav.pop();
-    }
-
-    return InkWell(
-      onTap: isActive ? null : select,
-      splashFactory: NoSplash.splashFactory,
-      highlightColor: t.surfacePressed,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 52),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  normalized,
-                  style: t.body.copyWith(
-                    fontSize: 14,
-                    fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              for (final tag in tags) ...[
-                const SizedBox(width: 6),
-                AppTag(tag == 'FREE' ? 'Free' : tag),
-              ],
-              const SizedBox(width: 10),
-              if (isActive)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 6),
-                  child: Icon(Icons.check_rounded, size: 20, color: t.accent),
-                )
-              else
-                PillButton(
-                  label: canUse ? 'Select' : 'Add key',
-                  onPressed: select,
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildErrorBox(BuildContext context, String error) {
-    return AppNotice(
-      error,
-      icon: Icons.error_outline_rounded,
-      color: AppTokens.of(context).red,
-    );
-  }
 
   // ── Local model cards ─────────────────────────────────────────────────
 
@@ -2171,20 +1275,18 @@ class _TextAction extends StatelessWidget {
   final IconData? icon;
   final VoidCallback? onTap;
   final Color? color;
-  final bool busy;
 
   const _TextAction({
     required this.label,
     this.icon,
     this.onTap,
     this.color,
-    this.busy = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final t = AppTokens.of(context);
-    final fg = onTap == null && !busy ? t.faint : (color ?? t.muted);
+    final fg = onTap == null ? t.faint : (color ?? t.muted);
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
@@ -2195,18 +1297,12 @@ class _TextAction extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (busy)
-              SizedBox(
-                width: 12,
-                height: 12,
-                child: CircularProgressIndicator(strokeWidth: 1.6, color: fg),
-              )
-            else if (icon != null)
-              Icon(icon, size: 15, color: fg),
-            if (busy || icon != null) const SizedBox(width: 5),
+            if (icon != null) Icon(icon, size: 15, color: fg),
+            if (icon != null) const SizedBox(width: 5),
             Text(
               label,
-              style: TextStyle(fontFamily: 'Inter',
+              style: TextStyle(
+                fontFamily: 'Inter',
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
                 color: fg,
@@ -2256,45 +1352,6 @@ class _IconAction extends StatelessWidget {
             width: 36,
             height: 36,
             child: Icon(icon, size: 19, color: color),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Square neutral icon button that matches the height of a text field.
-class _SquareIconButton extends StatelessWidget {
-  final IconData icon;
-  final String tooltip;
-  final VoidCallback? onTap;
-
-  const _SquareIconButton({
-    required this.icon,
-    required this.tooltip,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final t = AppTokens.of(context);
-    return Tooltip(
-      message: tooltip,
-      child: Material(
-        color: t.isDark ? Colors.white.withValues(alpha: 0.07) : t.fill,
-        borderRadius: BorderRadius.circular(12),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(12),
-          child: SizedBox(
-            width: 46,
-            height: 46,
-            child: Center(
-              child: Icon(icon,
-                  size: 20,
-                  color:
-                      onTap == null ? t.faint : t.text.withValues(alpha: 0.8)),
-            ),
           ),
         ),
       ),
@@ -2378,8 +1435,7 @@ class _ModelAvatar extends StatelessWidget {
   final String name;
   final bool loaded;
   final double size;
-  const _ModelAvatar(
-      {required this.name, this.loaded = false, this.size = 38});
+  const _ModelAvatar({required this.name, this.loaded = false, this.size = 38});
 
   static const _families = <(String, String, Color)>[
     ('gemma', 'Ge', Color(0xFF4285F4)),
@@ -2430,7 +1486,8 @@ class _ModelAvatar extends StatelessWidget {
           ),
           child: Text(
             mono[0].toUpperCase() + mono.substring(1),
-            style: TextStyle(fontFamily: 'Inter',
+            style: TextStyle(
+              fontFamily: 'Inter',
               fontSize: size * 0.36,
               fontWeight: FontWeight.w700,
               letterSpacing: -0.3,

@@ -55,7 +55,7 @@ class InferenceEngine {
     String source = 'chat',
     void Function(String token)? onToken,
   }) async {
-    return 'ERROR: Local inference is not available on this platform. Use Cloud mode.';
+    return 'ERROR: Local inference is not available on this platform.';
   }
 
   Future<void> stop() async {}

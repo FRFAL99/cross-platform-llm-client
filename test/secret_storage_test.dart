@@ -22,28 +22,45 @@ void main() {
 
   test('plaintext API keys in Hive are moved to secure storage', () async {
     final box = await Hive.openBox(AppConstants.settingsBox);
-    await box.put(AppConstants.keyOpenaiKey, 'sk-legacy');
+    await box.put(AppConstants.keyServerApiKey, 'aichat_legacy');
     await box.close();
 
     final hive = await HiveService().init();
 
-    expect(hive.getSetting<String>(AppConstants.keyOpenaiKey), 'sk-legacy');
-    expect(hive.settingsBox.containsKey(AppConstants.keyOpenaiKey), isFalse);
     expect(
-      await const FlutterSecureStorage().read(key: AppConstants.keyOpenaiKey),
-      'sk-legacy',
+        hive.getSetting<String>(AppConstants.keyServerApiKey), 'aichat_legacy');
+    expect(hive.settingsBox.containsKey(AppConstants.keyServerApiKey), isFalse);
+    expect(
+      await const FlutterSecureStorage()
+          .read(key: AppConstants.keyServerApiKey),
+      'aichat_legacy',
     );
   });
 
   test('new API keys never touch the Hive box', () async {
     final hive = await HiveService().init();
 
-    await hive.setSetting(AppConstants.keyAnthropicKey, 'sk-ant');
-    expect(hive.getSetting<String>(AppConstants.keyAnthropicKey), 'sk-ant');
-    expect(hive.settingsBox.containsKey(AppConstants.keyAnthropicKey), isFalse);
+    await hive.setSetting(AppConstants.keyServerApiKey, 'aichat_new');
+    expect(hive.getSetting<String>(AppConstants.keyServerApiKey), 'aichat_new');
+    expect(hive.settingsBox.containsKey(AppConstants.keyServerApiKey), isFalse);
 
-    await hive.setSetting(AppConstants.keyAnthropicKey, '');
-    expect(hive.getSetting<String>(AppConstants.keyAnthropicKey), isNull);
+    await hive.setSetting(AppConstants.keyServerApiKey, '');
+    expect(hive.getSetting<String>(AppConstants.keyServerApiKey), isNull);
+  });
+
+  test('API keys of removed cloud providers are deleted', () async {
+    final box = await Hive.openBox(AppConstants.settingsBox);
+    await box.put('openai_api_key', 'sk-old');
+    await box.put('cloud_model_cache_openai', ['gpt']);
+    await box.close();
+    FlutterSecureStorage.setMockInitialValues({'anthropic_api_key': 'sk-ant'});
+
+    final hive = await HiveService().init();
+
+    expect(hive.settingsBox.containsKey('openai_api_key'), isFalse);
+    expect(hive.settingsBox.containsKey('cloud_model_cache_openai'), isFalse);
+    expect(await const FlutterSecureStorage().read(key: 'anthropic_api_key'),
+        isNull);
   });
 
   test('non-secret settings stay in Hive', () async {

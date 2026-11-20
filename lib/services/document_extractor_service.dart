@@ -6,7 +6,7 @@ import 'package:xml/xml.dart';
 import 'package:pdfrx/pdfrx.dart';
 
 /// Extracts plain text from document files (PDF, DOCX) so they can be
-/// fed into local or cloud LLMs as context.
+/// fed into the model as context.
 class DocumentExtractorService {
   /// Extract text from a file based on its extension.
   static Future<String> extractText(String path, String extension) async {
@@ -63,7 +63,8 @@ class DocumentExtractorService {
 
     final documentFile = archive.files.firstWhere(
       (f) => f.name == 'word/document.xml',
-      orElse: () => throw Exception('Invalid DOCX: word/document.xml not found'),
+      orElse: () =>
+          throw Exception('Invalid DOCX: word/document.xml not found'),
     );
 
     final xmlString = utf8.decode(documentFile.content as List<int>);

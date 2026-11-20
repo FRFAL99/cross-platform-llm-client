@@ -5,33 +5,18 @@ class AppConstants {
   static const String chatSessionsBox = 'chat_sessions';
   static const String chatMessagesBox = 'chat_messages';
   static const String chatMessageIndexBox = 'chat_message_index';
+
   /// Legacy box of the removed task feature, deleted on startup.
   static const String tasksBox = 'tasks';
   static const String settingsBox = 'settings';
 
   // Settings Keys
-  static const String keyInferenceMode = 'inference_mode'; // 'local' or 'cloud'
-  static const String keyCloudProvider =
-      'cloud_provider'; // 'openai', 'anthropic', 'google', 'openrouter', 'custom'
-  static const String keyOpenaiKey = 'openai_api_key';
-  static const String keyAnthropicKey = 'anthropic_api_key';
-  static const String keyGoogleKey = 'google_api_key';
-  static const String keyOpenRouterKey = 'openrouter_api_key';
-  static const String keyCustomCloudName = 'custom_cloud_name';
-  static const String keyCustomCloudBaseUrl = 'custom_cloud_base_url';
-  static const String keyCustomCloudKey = 'custom_cloud_api_key';
-  static const String keyCustomCloudProfiles = 'custom_cloud_profiles';
-  static const String keyCustomCloudProfileIndex = 'custom_cloud_profile_index';
-  static const String keyOpenaiModel = 'openai_model';
-  static const String keyAnthropicModel = 'anthropic_model';
-  static const String keyGoogleModel = 'google_model';
-  static const String keyOpenRouterModel = 'openrouter_model';
-  static const String keyCustomCloudModel = 'custom_cloud_model';
   static const String keyGlobalSystemPrompt = 'global_system_prompt';
   static const String keyLocalModelPath = 'local_model_path';
   static const String keyLocalModelName = 'local_model_name';
   static const String keyLocalModelRuntime = 'local_model_runtime';
   static const String keyLocalModelBackend = 'local_model_backend';
+
   /// Performance mode for local models: 'auto_fast', 'gpu_fast' or
   /// 'cpu_safe'. The stored key keeps its old LiteRT-era name so existing
   /// settings survive.
@@ -64,11 +49,6 @@ class AppConstants {
   static const double defaultTemperature = 0.7;
   static const int defaultMaxTokens = 1024;
   static const int defaultContextSize = 2048;
-
-  /// Tokens of chat history sent to cloud providers (system prompt and the
-  /// reply come on top). Fits every current hosted model's context window;
-  /// older messages are dropped first.
-  static const int cloudHistoryTokenBudget = 24000;
   static const String defaultPerformanceMode = 'auto_fast';
   static const double defaultFontScale =
       0.95; // 4th slider stop, "Small" default
@@ -252,13 +232,4 @@ class AppConstants {
       'template': 'llama3',
     },
   ];
-
-  // Cloud API Endpoints
-  static const String openaiEndpoint =
-      'https://api.openai.com/v1/chat/completions';
-  static const String anthropicEndpoint =
-      'https://api.anthropic.com/v1/messages';
-  static const String googleEndpoint =
-      'https://generativelanguage.googleapis.com/v1beta/models';
-  static const String openRouterEndpoint = 'https://openrouter.ai/api/v1';
 }

@@ -29,16 +29,12 @@ class HiveService extends GetxService {
   /// Settings that hold credentials. They live in the OS secure storage
   /// (Android Keystore / iOS & macOS Keychain) instead of the plain Hive box.
   static const secretKeys = {
-    AppConstants.keyOpenaiKey,
-    AppConstants.keyAnthropicKey,
-    AppConstants.keyGoogleKey,
-    AppConstants.keyOpenRouterKey,
-    AppConstants.keyCustomCloudKey,
     AppConstants.keyServerApiKey,
   };
 
   /// Settings of removed features (Stable Diffusion and Stability AI image
-  /// generation, LiteRT, the Kimi / NVIDIA / DeepSeek cloud presets). Deleted on startup so no stale data or keys remain.
+  /// generation, LiteRT, cloud providers). Deleted on startup so no stale
+  /// data or keys remain.
   static const _removedFeatureKeys = [
     'stability_api_key',
     'stability_model',
@@ -55,18 +51,33 @@ class HiveService extends GetxService {
     'litert_gpu_crash_detected',
     'last_loaded_context_size',
     'batch_mode_warning_accepted',
+    'inference_mode',
+    'cloud_provider',
+    'custom_cloud_name',
+    'custom_cloud_base_url',
+    'custom_cloud_profiles',
+    'custom_cloud_profile_index',
+    'custom_cloud_model',
+    'openai_model',
+    'anthropic_model',
+    'google_model',
+    'openrouter_model',
     'kimi_model',
     'nvidia_model',
     'deepseek_model',
-    'cloud_model_cache_nvidia',
-    'cloud_model_cache_time_nvidia',
-    'cloud_model_cache_deepseek',
-    'cloud_model_cache_time_deepseek',
   ];
 
-  /// API keys of removed cloud presets (Kimi, NVIDIA NIM, DeepSeek; they work
-  /// through the Custom API provider). Deleted from secure storage and Hive.
+  /// Cached model lists of the removed cloud providers.
+  static const _removedFeatureKeyPrefixes = ['cloud_model_cache_'];
+
+  /// API keys of the removed cloud providers. Deleted from secure storage
+  /// and Hive.
   static const _removedSecretKeys = [
+    'openai_api_key',
+    'anthropic_api_key',
+    'google_api_key',
+    'openrouter_api_key',
+    'custom_cloud_api_key',
     'kimi_api_key',
     'nvidia_api_key',
     'deepseek_api_key',
@@ -106,6 +117,8 @@ class HiveService extends GetxService {
         !currentServerKeys.contains(key));
     await _settingsBox.deleteAll(obsoleteServerKeys);
     await _settingsBox.deleteAll(_removedFeatureKeys);
+    await _settingsBox.deleteAll(_settingsBox.keys.where((key) =>
+        key is String && _removedFeatureKeyPrefixes.any(key.startsWith)));
     await _settingsBox.deleteAll(_removedSecretKeys);
     await _loadSecrets();
     await _migrateMessages();

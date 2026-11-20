@@ -598,10 +598,8 @@ class ModelController extends GetxController {
       if (visionNote.isNotEmpty) {
         showToast('Model Loaded', '$result$visionNote',
             tone: ToastTone.info, duration: const Duration(seconds: 5));
-        await _settings.setInferenceMode('local');
         return;
       }
-      await _settings.setInferenceMode('local');
       showToast('Model Loaded', result, tone: ToastTone.success);
     } else {
       _showLoadFailedSheet(filename, result);
@@ -645,9 +643,8 @@ class ModelController extends GetxController {
 
     // Whatever is loaded now gets unloaded first, so count its memory as
     // free when judging whether the new model fits.
-    final loadedName = _inference.isModelLoaded.value
-        ? _inference.loadedModelName.value
-        : '';
+    final loadedName =
+        _inference.isModelLoaded.value ? _inference.loadedModelName.value : '';
     final hasLoadedModel = loadedName.isNotEmpty;
     final isSameModelLoaded = hasLoadedModel && loadedName == filename;
     final loadedBytes = hasLoadedModel ? (fileSizes[loadedName] ?? 0) : 0;
@@ -704,10 +701,8 @@ class ModelController extends GetxController {
     }
     final runtimeLabel = lower.endsWith('.gguf') ? 'GGUF' : 'Local model';
 
-    final warningSerious = (gguf != null && !fits) ||
-        isCriticallyLow ||
-        isLargeForRam ||
-        isLowRam;
+    final warningSerious =
+        (gguf != null && !fits) || isCriticallyLow || isLargeForRam || isLowRam;
 
     final sheetContext = Get.context;
     if (sheetContext == null || !sheetContext.mounted) {
