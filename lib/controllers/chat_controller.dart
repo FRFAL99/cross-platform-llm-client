@@ -21,6 +21,7 @@ import '../services/inference_service.dart';
 import '../services/cloud_service.dart';
 import '../services/app_log_service.dart';
 import '../services/document_extractor_service.dart';
+import '../utils/history_trimmer.dart';
 import '../utils/thought_parser.dart';
 
 const int _visionImageMaxSide = 768;
@@ -629,7 +630,10 @@ class ChatController extends GetxController {
         final cloud = Get.find<CloudService>();
         final apiMessages = [
           {'role': 'system', 'content': _effectiveSystemPrompt},
-          ...history,
+          ...trimHistoryToBudget(
+            history,
+            AppConstants.cloudHistoryTokenBudget,
+          ),
         ];
         rawResponse = await cloud.sendMessage(
           messages: apiMessages,

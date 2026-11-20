@@ -62,6 +62,11 @@ class AppConstants {
   static const double defaultTemperature = 0.7;
   static const int defaultMaxTokens = 1024;
   static const int defaultContextSize = 2048;
+
+  /// Tokens of chat history sent to cloud providers (system prompt and the
+  /// reply come on top). Fits every current hosted model's context window;
+  /// older messages are dropped first.
+  static const int cloudHistoryTokenBudget = 24000;
   static const String defaultPerformanceMode = 'auto_fast';
   static const double defaultFontScale =
       0.95; // 4th slider stop, "Small" default
