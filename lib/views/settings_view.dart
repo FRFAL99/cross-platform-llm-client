@@ -5,7 +5,6 @@ import '../core/constants.dart';
 import '../core/ui.dart';
 import '../widgets/home_empty_state.dart' show providerLabel;
 import '../services/inference_service.dart';
-import '../services/hive_service.dart';
 import '../services/update_service.dart';
 import '../services/device_info_service.dart';
 import '../services/device_info_native.dart' as platform_info;

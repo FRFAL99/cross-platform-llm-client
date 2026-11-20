@@ -14,7 +14,7 @@ Privacy is the product. Nothing should leave the device unless the user picked a
 
 ## Stack and layout
 
-- Flutter 3.x, Dart >=3.3. State: GetX. Storage: Hive. HTTP: Dio + `package:http`.
+- Flutter 3.47.9 (pinned in CI; Flutter 3.50+ needs Gradle 9.3.1 and the Android project is on Gradle 8.14), Dart 3.13. State: GetX. Storage: Hive. HTTP: Dio + `package:http`.
 - `lib/controllers` (GetX controllers), `lib/services` (inference, cloud, storage, download, server), `lib/views`, `lib/widgets`, `lib/core` (constants, routes, theme, UI kit), `lib/models`.
 - Platform splits use conditional imports (`*_native.dart` / `*_web.dart` / `*_stub.dart`).
 - Native code lives in `local_plugins/llama_flutter_android` (llama.cpp, vendored and lightly patched for the phone cluster). It is large; don't touch it unless the task is about it.
@@ -39,4 +39,4 @@ Privacy is the product. Nothing should leave the device unless the user picked a
 
 - Commits follow Conventional Commits with a scope, e.g. `feat(cluster): ...`, `fix(cloud): ...`, `chore: ...`.
 - Work on a branch and open a PR against `main`; keep PRs focused.
-- Run `flutter analyze` and `flutter test` before pushing. Tests live in `test/` and use Hive in a temp directory. Nobody has built the iOS/macOS apps since the cleanup: run `pod install` and an Xcode build before an iOS release.
+- Run `flutter analyze` and `flutter test` before pushing. CI (`.github/workflows/android.yml`) builds every PR; a `vX.Y.Z` tag matching `pubspec.yaml` publishes signed APKs to GitHub Releases (needs the `ANDROID_KEY*` secrets). Tests live in `test/` and use Hive in a temp directory. Nobody has built the iOS/macOS apps since the cleanup: run `pod install` and an Xcode build before an iOS release.

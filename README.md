@@ -1,13 +1,26 @@
 # PrivateLM
 
-A production-ready, cross-platform AI chat client built with Flutter. It unifies local on-device LLM inference (Android) with cloud API access, giving users full control over how their models run.
+A private, cross-platform AI chat client built with Flutter. It runs GGUF models on your phone with llama.cpp and can also use cloud providers, giving you full control over where your conversations go.
+
+This is a fork of [orailnoor/cross-platform-llm-client](https://github.com/orailnoor/cross-platform-llm-client), trimmed to a small core: local chat, cloud chat and a local OpenAI-compatible server. Image generation, the LiteRT engine, the task runner and Firebase were removed.
+
+## Install on Android
+
+1. On your phone, open the [latest release](https://github.com/FRFAL99/cross-platform-llm-client/releases/latest).
+2. Download `PrivateLM-<version>-arm64-v8a.apk` (almost every recent phone). Use `armeabi-v7a` only on old 32-bit phones.
+3. Open the file and allow your browser or file manager to install unknown apps when Android asks.
+4. Later versions arrive in the app itself (Settings › App updates), from the same releases page.
+
+If you installed the upstream PrivateLM before, uninstall it first: it uses the same package name but a different signing key, so Android refuses to update it.
 
 ---
 
 ## What It Does
 
 - **Local Inference on Android** — Download and run GGUF models directly on your phone using GPU-accelerated inference (Vulkan). No internet required after download.
-- **Cloud API Fallback** — Seamlessly switch to OpenAI, Anthropic, Google Gemini, or Kimi (Moonshot AI) when you need more power or are on unsupported platforms.
+- **Cloud Providers** — Switch to OpenAI, Anthropic, Google Gemini, Kimi, DeepSeek, OpenRouter, NVIDIA or any OpenAI-compatible endpoint when you need more power.
+- **Local API Server** — Serve the loaded model as an OpenAI-compatible endpoint (localhost by default; network mode requires an API key).
+- **Phone Cluster (experimental)** — Split one GGUF model across phones on the same Wi-Fi. Workers accept unauthenticated connections, so use it only on a trusted network.
 - **Multimodal Chat** — Send text and images in conversations. Vision support works with both local models (Qwen2-VL) and cloud providers.
 - **Persistent Sessions** — All chats and settings are stored locally via Hive; API keys go to the OS secure storage (Keystore/Keychain). Nothing leaves your device unless you explicitly choose cloud mode.
 - **Smart Auto-Configuration** — On first launch, the app detects your device's RAM and recommends optimal context size and token limits automatically.
@@ -72,7 +85,7 @@ Idle detection (5s) and hard timeouts (180s) keep the UX responsive even on unde
 - **Google Gemini** — `generateContent` with inline image base64
 - **Kimi** — OpenAI-compatible endpoint from Moonshot AI
 
-API keys are stored in Hive and never transmitted anywhere except to the provider's endpoint.
+API keys are stored in the OS secure storage (Android Keystore / iOS Keychain) and never transmitted anywhere except to the provider's endpoint.
 
 ### Cross-Platform Abstraction
 
@@ -133,6 +146,30 @@ Here is how you can install the app using AltStore and AltServer:
 flutter pub get
 flutter build apk --debug
 ```
+
+### Releases
+
+The `Android` GitHub Actions workflow builds every pull request. Pushing a tag
+`vX.Y.Z` that matches `version:` in `pubspec.yaml` builds signed per-ABI APKs
+and publishes them as a GitHub Release, which the in-app updater picks up.
+
+One-time setup: create a keystore and store it in the repository secrets
+(Settings › Secrets and variables › Actions).
+
+```bash
+keytool -genkeypair -v -keystore privatelm-release.jks -alias privatelm \
+  -keyalg RSA -keysize 4096 -validity 10000
+base64 -w0 privatelm-release.jks   # value for ANDROID_KEYSTORE_BASE64
+```
+
+Secrets: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`,
+`ANDROID_KEY_ALIAS` (`privatelm`), `ANDROID_KEY_PASSWORD`. Keep a backup of
+the `.jks` file: losing it means users must uninstall to update.
+
+To release: bump `version:` in `pubspec.yaml` (both parts, e.g.
+`1.1.1+9`), merge, then `git tag v1.1.1 && git push origin v1.1.1`.
+
+### Local release build
 
 Release APKs require a stable signing key. Copy
 `android/key.properties.example` to `android/key.properties`, fill in the
