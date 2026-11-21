@@ -13,6 +13,7 @@ import '../utils/thought_parser.dart';
 import 'stop_sequence_filter.dart';
 import '../core/ui.dart' show showToast, ToastTone;
 import '../models/benchmark_result.dart';
+import 'decisions/decision_engine.dart';
 
 // Conditionally import llama_flutter_android — only on Android
 import 'inference_android.dart' if (dart.library.html) 'inference_stub.dart'
@@ -122,6 +123,78 @@ class InferenceService extends GetxService {
       isBenchmarking.value = false;
       isGenerating.value = false;
       generationSource.value = '';
+    }
+  }
+
+  /// A decision request owns the model (like the speed test, a chat turn
+  /// waits for it instead of stopping it).
+  bool _deciding = false;
+
+  /// Answers a `/v1/decisions` request (typed decisions with probabilities)
+  /// by reading the answer letters' logits: no tokens are generated. Throws
+  /// a `DecisionRequestError` for an invalid request. Returns null if it was
+  /// stopped. A cluster worker that drops is left out (the model reloads)
+  /// and the request runs once more.
+  Future<Map<String, dynamic>?> decide(Object? body) async {
+    final engine = _engine;
+    if (engine == null || !isModelLoaded.value) {
+      throw Exception('Load a model first.');
+    }
+    if (isGenerating.value || _deciding) {
+      throw Exception('The model is busy. Try again when it has finished.');
+    }
+    _deciding = true;
+    isGenerating.value = true;
+    generationSource.value = 'decisions';
+    final stops = _stopCount;
+    try {
+      Future<ScoredPrompts> score(List<DecisionPrompt> prompts) async {
+        for (var attempt = 0;; attempt++) {
+          try {
+            final out = await engine.scoreOptions(
+              system: prompts.first.system,
+              users: [for (final p in prompts) p.user],
+              counts: [for (final p in prompts) p.options],
+            );
+            if (out == null || _stopCount != stops) {
+              throw const _DecisionsStopped();
+            }
+            return ScoredPrompts([
+              for (var i = 0; i < prompts.length; i++)
+                OptionScores(out.logits[i], out.promptTokens[i]),
+            ], out.sharedPrefixTokens);
+          } catch (e) {
+            final message = '$e';
+            if (attempt > 0 ||
+                !message.contains(AppConstants.clusterWorkerLostError)) {
+              rethrow;
+            }
+            final worker = _lostEndpoint(message);
+            Get.find<AppLogService>()
+                .error('Phone cluster worker lost', details: worker);
+            final name = Get.isRegistered<ClusterService>()
+                ? Get.find<ClusterService>().nameFor(worker)
+                : worker;
+            // The reload needs the model free.
+            isGenerating.value = false;
+            final ok = await _recoverFromLostWorker(name);
+            isGenerating.value = true;
+            if (!ok || _stopCount != stops) rethrow;
+          }
+        }
+      }
+
+      return await runDecisions(body, score: score, model: {
+        'id': loadedModelName.value,
+        'runtime': 'llama.cpp',
+        'backend': isGpuAccelerated.value ? 'gpu' : 'cpu',
+      });
+    } on _DecisionsStopped {
+      return null;
+    } finally {
+      isGenerating.value = false;
+      _deciding = false;
+      if (generationSource.value == 'decisions') generationSource.value = '';
     }
   }
 
@@ -551,7 +624,7 @@ class InferenceService extends GetxService {
 
     // The speed test owns the model until it ends (stopping it midway
     // would race with the native benchmark); wait instead.
-    while (isBenchmarking.value) {
+    while (isBenchmarking.value || _deciding) {
       await Future.delayed(const Duration(milliseconds: 200));
     }
     if (isGenerating.value) {
@@ -827,4 +900,8 @@ class GenerationUsage {
         'completion_tokens': completionTokens,
         'total_tokens': totalTokens,
       };
+}
+
+class _DecisionsStopped implements Exception {
+  const _DecisionsStopped();
 }

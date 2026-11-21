@@ -4,11 +4,13 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:get/get.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../controllers/settings_controller.dart';
 import '../core/constants.dart';
+import 'decisions/decision_request.dart';
 import 'inference_service.dart';
 import 'server/json_grammar.dart';
 import 'server/tool_calling.dart';
@@ -134,6 +136,10 @@ class OpenAiServerService {
         await _handleCompletions(request);
         return;
       }
+      if (request.method == 'POST' && path == '/v1/decisions') {
+        await _handleDecisions(request);
+        return;
+      }
 
       await _json(request, {'error': 'Not found'}, status: HttpStatus.notFound);
     } catch (error) {
@@ -202,6 +208,7 @@ class OpenAiServerService {
         'streaming': hasModel,
         'tools': hasModel,
         'json_mode': hasModel,
+        'decisions': hasModel,
         'gguf': hasModel,
       },
     });
@@ -270,6 +277,41 @@ class OpenAiServerService {
     } finally {
       _busy = false;
       await _deleteFiles(tempFiles);
+    }
+  }
+
+  /// Typed decisions (yes/no, choice, score, number) with probabilities,
+  /// read from the answer letters' logits: no text is generated. Same
+  /// request/response format as Rizzo Flow's `/v1/decisions`.
+  Future<void> _handleDecisions(HttpRequest request) async {
+    final inference = Get.find<InferenceService>();
+    if (!await _acquire(request, inference)) return;
+    try {
+      final body = await _readJson(request);
+      final Map<String, dynamic>? response;
+      try {
+        response = await inference.decide(body);
+      } on DecisionRequestError catch (e) {
+        await _json(request, {'error': e.message, 'detail': e.message},
+            status: HttpStatus.unprocessableEntity);
+        return;
+      } on PlatformException catch (e) {
+        // The native side refuses what it can't score (too long for the
+        // context, a tokenizer without single-letter answers).
+        final message = e.message ?? e.code;
+        await _json(request, {'error': message, 'detail': message},
+            status: HttpStatus.unprocessableEntity);
+        return;
+      }
+      if (response == null) {
+        await _interrupted(request);
+        return;
+      }
+      _onLog?.call('Decisions: ${(response['answers'] as Map).length} '
+          'question(s) in ${(response['timing'] as Map)['total_seconds']} s');
+      await _json(request, response);
+    } finally {
+      _busy = false;
     }
   }
 

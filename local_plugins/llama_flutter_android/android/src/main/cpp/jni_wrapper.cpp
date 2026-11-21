@@ -1607,3 +1607,162 @@ Java_com_write4me_llama_1flutter_1android_LlamaTools_nativeCountTokens(
     const int n = llama_tokenize(g_vocab, clean.c_str(), (int32_t)clean.size(), nullptr, 0, false, true);
     return n < 0 ? -n : n;
 }
+
+// ---------------------------------------------------------------------------
+// Typed decisions (LlamaTools.kt): next-token scores of answer letters
+// ---------------------------------------------------------------------------
+
+/// Tokenizes like nativeGenerate (BOS added, special tokens parsed).
+static std::vector<llama_token> tokenizePrompt(const std::string& text) {
+    const int n = -llama_tokenize(g_vocab, text.c_str(), (int32_t)text.size(), nullptr, 0, true, true);
+    if (n <= 0) return {};
+    std::vector<llama_token> tokens(n);
+    const int got = llama_tokenize(g_vocab, text.c_str(), (int32_t)text.size(), tokens.data(), n, true, true);
+    if (got < 0) return {};
+    tokens.resize(got);
+    return tokens;
+}
+
+static std::vector<llama_token> tokenizePlain(const std::string& text) {
+    const int n = -llama_tokenize(g_vocab, text.c_str(), (int32_t)text.size(), nullptr, 0, false, true);
+    if (n <= 0) return {};
+    std::vector<llama_token> tokens(n);
+    const int got = llama_tokenize(g_vocab, text.c_str(), (int32_t)text.size(), tokens.data(), n, false, true);
+    if (got < 0) return {};
+    tokens.resize(got);
+    return tokens;
+}
+
+/// The token the model writes for `letter` right after `prompt`: the end of
+/// the prompt is tokenized with and without the letter, and the letter must
+/// add exactly one token without changing the ones before it. Only the
+/// prompt's tail is tokenized (the start of the cut doesn't affect its end).
+/// -1 when the letter is not a single clean token here.
+static llama_token answerToken(const std::string& prompt, char letter) {
+    size_t start = prompt.size() > 160 ? prompt.size() - 160 : 0;
+    while (start < prompt.size() && ((unsigned char)prompt[start] & 0xC0) == 0x80) start++;
+    const std::string tail = prompt.substr(start);
+    const auto base = tokenizePlain(tail);
+    const auto with = tokenizePlain(tail + letter);
+    if (with.size() != base.size() + 1 || !std::equal(base.begin(), base.end(), with.begin())) {
+        return -1;
+    }
+    return with.back();
+}
+
+static void throwDecisionError(JNIEnv* env, const std::string& message) {
+    jclass exception = env->FindClass("java/lang/IllegalArgumentException");
+    env->ThrowNew(exception, message.c_str());
+}
+
+/// Scores multiple-choice prompts without generating: for each prompt, one
+/// forward pass and the logits of its answer letters (A, B, … `counts[i]`).
+/// The tokens all prompts share (system prompt and evidence) are read once,
+/// and reused from the conversation cache when they are already there.
+/// Returns [shared prefix tokens, then for each prompt: its token count and
+/// its counts[i] logits], or null if stopped. Leaves the cache holding the
+/// shared prefix plus the last prompt's question, so the next request with
+/// the same evidence starts from it.
+extern "C" JNIEXPORT jdoubleArray JNICALL
+Java_com_write4me_llama_1flutter_1android_LlamaTools_nativeScoreOptions(
+        JNIEnv* env, jobject /* this */, jobjectArray prompts, jintArray counts) {
+    if (!g_ctx || !g_model || !g_vocab) {
+        jclass exception = env->FindClass("java/lang/IllegalStateException");
+        env->ThrowNew(exception, "No model loaded");
+        return nullptr;
+    }
+    const int n = env->GetArrayLength(prompts);
+    if (n <= 0 || env->GetArrayLength(counts) != n) {
+        throwDecisionError(env, "No questions to score");
+        return nullptr;
+    }
+    std::vector<jint> letterCounts(n);
+    env->GetIntArrayRegion(counts, 0, n, letterCounts.data());
+
+    const int n_ctx = llama_n_ctx(g_ctx);
+    const int n_vocab = llama_vocab_n_tokens(g_vocab);
+    std::vector<std::vector<llama_token>> tokens(n);
+    std::vector<std::vector<llama_token>> slots(n);
+    for (int i = 0; i < n; i++) {
+        auto text = (jstring)env->GetObjectArrayElement(prompts, i);
+        const char* chars = text ? env->GetStringUTFChars(text, nullptr) : nullptr;
+        if (!chars) { throwDecisionError(env, "Invalid prompt"); return nullptr; }
+        // Never log prompt text: it is the client's data.
+        const std::string prompt = sanitizeUTF8(chars, std::strlen(chars));
+        env->ReleaseStringUTFChars(text, chars);
+        env->DeleteLocalRef(text);
+        tokens[i] = tokenizePrompt(prompt);
+        if (tokens[i].size() < 2) { throwDecisionError(env, "Failed to tokenize a question"); return nullptr; }
+        if ((int)tokens[i].size() > n_ctx) {
+            throwDecisionError(env, "Question " + std::to_string(i + 1) + " needs " +
+                std::to_string(tokens[i].size()) + " tokens, more than the context size (" +
+                std::to_string(n_ctx) + "). Shorten the state or raise the context size; nothing is truncated.");
+            return nullptr;
+        }
+        const int k = letterCounts[i];
+        if (k < 2 || k > 26) { throwDecisionError(env, "Each question needs 2-26 options"); return nullptr; }
+        for (int j = 0; j < k; j++) {
+            const llama_token t = answerToken(prompt, (char)('A' + j));
+            if (t < 0 || t >= n_vocab ||
+                std::find(slots[i].begin(), slots[i].end(), t) != slots[i].end()) {
+                throwDecisionError(env, std::string("This model's tokenizer can't answer with the single letter ") +
+                    (char)('A' + j) + " after its chat template");
+                return nullptr;
+            }
+            slots[i].push_back(t);
+        }
+    }
+
+    // Tokens every prompt starts with; each prompt keeps at least one of its
+    // own so its last position is decoded.
+    size_t shared = tokens[0].size() - 1;
+    for (int i = 1; i < n; i++) {
+        size_t m = 0;
+        while (m < shared && m < tokens[i].size() - 1 && tokens[i][m] == tokens[0][m]) m++;
+        shared = m;
+    }
+    const std::vector<llama_token> prefix(tokens[0].begin(), tokens[0].begin() + shared);
+
+    g_stop_flag = false;
+    if (!g_cache_reusable) benchClearCache();
+    auto memory = llama_get_memory(g_ctx);
+    size_t keep = 0;
+    while (keep < g_cached_tokens.size() && keep < prefix.size() && g_cached_tokens[keep] == prefix[keep]) keep++;
+    if (!llama_memory_seq_rm(memory, 0, (llama_pos)keep, -1)) {
+        benchClearCache();
+        keep = 0;
+    }
+    g_cached_tokens.resize(keep);
+    g_n_past = (int)keep;
+
+    auto fail = [&]() -> jdoubleArray {
+        benchClearCache();
+        if (g_cluster_lost) throwClusterLost(env);
+        return nullptr;
+    };
+    if (keep < prefix.size()) {
+        const std::vector<llama_token> rest(prefix.begin() + keep, prefix.end());
+        if (!benchDecode(rest, (int)keep, true)) return fail();
+    }
+    g_cached_tokens = prefix;
+    g_n_past = (int)prefix.size();
+
+    std::vector<jdouble> out;
+    out.push_back((jdouble)prefix.size());
+    for (int i = 0; i < n; i++) {
+        if (!llama_memory_seq_rm(memory, 0, (llama_pos)prefix.size(), -1)) return fail();
+        const std::vector<llama_token> suffix(tokens[i].begin() + prefix.size(), tokens[i].end());
+        if (!benchDecode(suffix, (int)prefix.size(), true)) return fail();
+        const float* logits = llama_get_logits_ith(g_ctx, -1);
+        if (!logits) return fail();
+        out.push_back((jdouble)tokens[i].size());
+        for (llama_token t : slots[i]) out.push_back((jdouble)logits[t]);
+    }
+    g_cached_tokens = tokens[n - 1];
+    g_n_past = (int)g_cached_tokens.size();
+    g_cache_reusable = true;
+
+    jdoubleArray result = env->NewDoubleArray((jsize)out.size());
+    env->SetDoubleArrayRegion(result, 0, (jsize)out.size(), out.data());
+    return result;
+}

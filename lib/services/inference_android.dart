@@ -44,6 +44,7 @@ class InferenceEngine {
   bool get ggufVisionLoaded => _ggufVisionLoaded;
   bool _disposed = false;
   bool _hasLoadedModel = false;
+  String? _modelPath;
 
   Future<LoadResult> loadModel({
     required String modelPath,
@@ -162,6 +163,7 @@ class InferenceEngine {
       mmprojPath: mmprojPath,
     );
     _hasLoadedModel = true;
+    _modelPath = modelPath;
     _ggufVisionLoaded = mmprojPath != null && visionError == null;
     if (visionError != null) {
       print('[Inference] Vision projector not loaded: $visionError');
@@ -345,6 +347,22 @@ class InferenceEngine {
       return await LlamaTools.benchmark(prompt: prompt, gen: gen);
     } on MissingPluginException {
       throw Exception('The speed test is only available on Android.');
+    }
+  }
+
+  /// Answer-letter logits of decision prompts, read without generating
+  /// (see [LlamaTools.scoreOptions]). Null if stopped.
+  Future<LlamaOptionScores?> scoreOptions({
+    required String system,
+    required List<String> users,
+    required List<int> counts,
+  }) async {
+    if (_controller == null) throw Exception('No model loaded');
+    try {
+      return await LlamaTools.scoreOptions(
+          system: system, users: users, counts: counts, modelPath: _modelPath);
+    } on MissingPluginException {
+      throw Exception('Decisions are only available on Android.');
     }
   }
 
