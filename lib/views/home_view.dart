@@ -1,21 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../controllers/home_controller.dart';
-import '../widgets/chat_drawer.dart';
-import 'chat_view.dart';
+import '../core/haptics.dart';
+import '../core/ui.dart';
+import '../services/cluster_service.dart';
+import 'cluster_view.dart';
+import 'dashboard_view.dart';
 import 'model_view.dart';
 import 'server_view.dart';
-import 'settings_view.dart';
-import '../core/haptics.dart';
 
+/// Main screen: the four things the app does, one tab each. Home shows the
+/// state of all of them; the chat and settings open on their own pages.
 class HomeView extends GetView<HomeController> {
   const HomeView({super.key});
 
   static const _tabs = [
     _NavItem(
-        icon: Icons.chat_bubble_outline_rounded,
-        activeIcon: Icons.chat_bubble_rounded,
-        label: 'Chat'),
+        icon: Icons.space_dashboard_outlined,
+        activeIcon: Icons.space_dashboard_rounded,
+        label: 'Home'),
     _NavItem(
         icon: Icons.layers_outlined,
         activeIcon: Icons.layers_rounded,
@@ -25,70 +28,38 @@ class HomeView extends GetView<HomeController> {
         activeIcon: Icons.lan_rounded,
         label: 'Server'),
     _NavItem(
-        icon: Icons.settings_outlined,
-        activeIcon: Icons.settings,
-        label: 'Settings'),
+        icon: Icons.hub_outlined,
+        activeIcon: Icons.hub_rounded,
+        label: 'Cluster'),
   ];
-
-  bool get _isWide {
-    // Force bottom navbar for all layouts per user request
-    return false;
-  }
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Obx(() => Scaffold(
-          key: controller.scaffoldKey,
-          backgroundColor: isDark ? Colors.black : Colors.white,
-          drawer: const ChatDrawer(),
-          drawerScrimColor: Colors.black.withValues(alpha: isDark ? 0.6 : 0.32),
-          // Edge-swipe only where the sidebar makes sense.
-          drawerEnableOpenDragGesture: controller.currentTab.value == 0,
-          drawerEdgeDragWidth: 28,
-          body: Obx(() {
-            final content = IndexedStack(
-              index: controller.currentTab.value,
-              children: const [
-                ChatView(),
-                ModelView(),
-                ServerView(),
-                SettingsView()
-              ],
-            );
-            if (_isWide) {
-              return Row(children: [
-                _buildSidebar(context, isDark),
-                VerticalDivider(
-                    width: 0.5,
-                    thickness: 0.5,
-                    color: isDark
-                        ? Colors.white.withValues(alpha: 0.08)
-                        : Colors.black.withValues(alpha: 0.08)),
-                Expanded(child: content),
-              ]);
-            }
-            return content;
-          }),
-          bottomNavigationBar:
-              _isWide ? null : _buildBottomNav(context, isDark),
-        ));
+    final t = AppTokens.of(context);
+    return Scaffold(
+      backgroundColor: t.bg,
+      body: Obx(() => IndexedStack(
+            index: controller.currentTab.value,
+            children: [
+              const DashboardView(),
+              const ModelView(),
+              const ServerView(),
+              if (Get.isRegistered<ClusterService>())
+                const ClusterView()
+              else
+                const _ClusterUnsupported(),
+            ],
+          )),
+      bottomNavigationBar: Obx(() => _bottomNav(context, t)),
+    );
   }
 
-  Widget _buildBottomNav(BuildContext context, bool isDark) {
-    final accent = isDark ? const Color(0xFF0A84FF) : const Color(0xFF007AFF);
-    final muted = isDark ? const Color(0xFF7C7C80) : const Color(0xFF8E8E93);
+  Widget _bottomNav(BuildContext context, AppTokens t) {
     final current = controller.currentTab.value;
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? Colors.black : Colors.white,
-        border: Border(
-            top: BorderSide(
-          color: isDark
-              ? Colors.white.withValues(alpha: 0.08)
-              : Colors.black.withValues(alpha: 0.08),
-          width: 0.5,
-        )),
+        color: t.bg,
+        border: Border(top: BorderSide(color: t.hairline, width: 0.5)),
       ),
       child: SafeArea(
         top: false,
@@ -110,24 +81,21 @@ class HomeView extends GetView<HomeController> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 160),
-                          child: Icon(
-                            current == i ? _tabs[i].activeIcon : _tabs[i].icon,
-                            key: ValueKey(current == i),
-                            size: 23,
-                            color: current == i ? accent : muted,
-                          ),
+                        Icon(
+                          current == i ? _tabs[i].activeIcon : _tabs[i].icon,
+                          size: 23,
+                          color: current == i ? t.accent : t.muted,
                         ),
                         const SizedBox(height: 3),
                         Text(_tabs[i].label,
-                            style: TextStyle(fontFamily: 'Inter',
+                            style: TextStyle(
+                                fontFamily: 'Inter',
                                 fontSize: 10.5,
                                 letterSpacing: 0.1,
                                 fontWeight: current == i
                                     ? FontWeight.w600
                                     : FontWeight.w500,
-                                color: current == i ? accent : muted)),
+                                color: current == i ? t.accent : t.muted)),
                       ],
                     ),
                   ),
@@ -138,65 +106,6 @@ class HomeView extends GetView<HomeController> {
       ),
     );
   }
-
-  Widget _buildSidebar(BuildContext context, bool isDark) {
-    final accent = isDark ? const Color(0xFF0A84FF) : const Color(0xFF007AFF);
-    final muted = Theme.of(context).hintColor;
-
-    return Container(
-      width: 76,
-      color: isDark ? Colors.black : Colors.white,
-      child: Column(children: [
-        // const SizedBox(height: 20),
-        // Image.asset(
-        //   'assets/icons/appicon.png',
-        //   width: 40,
-        //   height: 40,
-        // ),
-        // const SizedBox(height: 20),
-        Expanded(child: Obx(() {
-          final current = controller.currentTab.value;
-          return ListView.builder(
-            itemCount: _tabs.length,
-            itemBuilder: (_, i) {
-              final tab = _tabs[i];
-              final sel = current == i;
-              return Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                child: Material(
-                  color:
-                      sel ? accent.withValues(alpha: 0.12) : Colors.transparent,
-                  borderRadius: BorderRadius.circular(12),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(12),
-                    onTap: () => controller.changeTab(i),
-                    child: SizedBox(
-                      height: 52,
-                      child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(sel ? tab.activeIcon : tab.icon,
-                                color: sel ? accent : muted, size: 20),
-                            const SizedBox(height: 3),
-                            Text(tab.label,
-                                style: TextStyle(fontFamily: 'Inter',
-                                    fontSize: 10,
-                                    fontWeight:
-                                        sel ? FontWeight.w600 : FontWeight.w400,
-                                    color: sel ? accent : muted)),
-                          ]),
-                    ),
-                  ),
-                ),
-              );
-            },
-          );
-        })),
-        const SizedBox(height: 16),
-      ]),
-    );
-  }
 }
 
 class _NavItem {
@@ -205,4 +114,21 @@ class _NavItem {
   final String label;
   const _NavItem(
       {required this.icon, required this.activeIcon, required this.label});
+}
+
+class _ClusterUnsupported extends StatelessWidget {
+  const _ClusterUnsupported();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppTokens.of(context).bg,
+      appBar: appScreenBar(context, title: 'Cluster'),
+      body: const EmptyState(
+        icon: Icons.hub_outlined,
+        title: 'Not available here',
+        message: 'The phone cluster runs on Android and iOS.',
+      ),
+    );
+  }
 }

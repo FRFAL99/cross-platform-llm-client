@@ -31,33 +31,6 @@ extension _InputSection on ChatView {
                     },
                   ));
             }),
-            // STT listening indicator
-            Obx(() {
-              if (!controller.isListening.value) return const SizedBox.shrink();
-              return Padding(
-                padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFF3B30).withValues(alpha: 0.10),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                        color: const Color(0xFFFF3B30).withValues(alpha: 0.3)),
-                  ),
-                  child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                    _PulsingDot(),
-                    SizedBox(width: 8),
-                    Text('Listening… tap mic to stop',
-                        style: TextStyle(
-                            fontFamily: 'Inter',
-                            fontSize: 12,
-                            color: Color(0xFFFF3B30),
-                            fontWeight: FontWeight.w500)),
-                  ]),
-                ),
-              );
-            }),
             // Composer: one rounded surface holding the field and its actions.
             Container(
                 padding: const EdgeInsets.all(5),
@@ -103,7 +76,7 @@ extension _InputSection on ChatView {
                     return GestureDetector(
                         behavior: HitTestBehavior.opaque,
                         onTap: noModel && !loadingModel
-                            ? () => Get.find<HomeController>().changeTab(1)
+                            ? () => Get.find<HomeController>().openTab(AppTab.models)
                             : null,
                         child: Container(
                           constraints: const BoxConstraints(minHeight: 40),
@@ -144,45 +117,34 @@ extension _InputSection on ChatView {
                         ));
                   })),
                   const SizedBox(width: 6),
-                  // Unified mic / send / stop button
+                  // Send / stop button
                   Obx(() {
                     final loading = controller.isLoading.value;
-                    final listening = controller.isListening.value;
                     final noModel = _localModelMissing();
                     final hasContent = controller.inputText.value.isNotEmpty ||
                         controller.selectedFileName.value != null ||
                         controller.selectedImagePath.value != null;
+                    final canSend = hasContent && !noModel;
 
-                    // Determine state
                     final Color bgColor;
                     final IconData iconData;
                     final VoidCallback? onTap;
-
                     if (loading) {
-                      // AI generating → solid neutral stop
+                      // Generating → solid neutral stop
                       bgColor = isDark ? Colors.white : Colors.black;
                       iconData = Icons.stop_rounded;
                       onTap = controller.stopGenerating;
-                    } else if (listening) {
-                      // STT active → red stop
-                      bgColor = const Color(0xFFFF3B30);
-                      iconData = Icons.stop_rounded;
-                      onTap = controller.toggleListening;
-                    } else if (noModel) {
-                      // Nothing to talk to: inert, faded mic
-                      bgColor = Colors.transparent;
-                      iconData = Icons.mic_none_rounded;
-                      onTap = null;
-                    } else if (hasContent) {
-                      // Has text or attachment → blue send
+                    } else if (canSend) {
                       bgColor = _appleBlue(context);
                       iconData = Icons.arrow_upward_rounded;
                       onTap = controller.sendMessage;
                     } else {
-                      // Empty → bare mic glyph
-                      bgColor = Colors.transparent;
-                      iconData = Icons.mic_none_rounded;
-                      onTap = controller.toggleListening;
+                      // Nothing to send yet: a quiet, inert arrow.
+                      bgColor = Theme.of(context)
+                          .hintColor
+                          .withValues(alpha: isDark ? 0.18 : 0.12);
+                      iconData = Icons.arrow_upward_rounded;
+                      onTap = null;
                     }
 
                     return GestureDetector(
@@ -203,11 +165,11 @@ extension _InputSection on ChatView {
                               key: ValueKey(iconData),
                               color: loading
                                   ? (isDark ? Colors.black : Colors.white)
-                                  : (listening || (hasContent && !noModel))
+                                  : canSend
                                       ? Colors.white
                                       : Theme.of(context)
                                           .hintColor
-                                          .withValues(alpha: noModel ? 0.4 : 1),
+                                          .withValues(alpha: 0.6),
                               size: 20),
                         ),
                       ),
@@ -397,48 +359,6 @@ class _AttachButton extends StatelessWidget {
           ),
         );
       },
-    );
-  }
-}
-
-class _PulsingDot extends StatefulWidget {
-  const _PulsingDot();
-
-  @override
-  State<_PulsingDot> createState() => _PulsingDotState();
-}
-
-class _PulsingDotState extends State<_PulsingDot>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _c;
-  late Animation<double> _scale;
-
-  @override
-  void initState() {
-    super.initState();
-    _c = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 900))
-      ..repeat(reverse: true);
-    _scale = Tween<double>(begin: 0.7, end: 1.3)
-        .animate(CurvedAnimation(parent: _c, curve: Curves.easeInOut));
-  }
-
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return ScaleTransition(
-      scale: _scale,
-      child: Container(
-        width: 8,
-        height: 8,
-        decoration: const BoxDecoration(
-            color: Color(0xFFFF3B30), shape: BoxShape.circle),
-      ),
     );
   }
 }

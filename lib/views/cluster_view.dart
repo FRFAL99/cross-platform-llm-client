@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:llama_flutter_android/llama_flutter_android.dart';
 
+import '../controllers/home_controller.dart';
 import '../core/ui.dart';
 import '../services/cluster_service.dart';
 
@@ -20,10 +21,26 @@ class ClusterView extends StatefulWidget {
 class _ClusterViewState extends State<ClusterView> {
   final ClusterService cluster = Get.find<ClusterService>();
   Timer? _wifiTimer;
+  Worker? _tabWatch;
 
   @override
   void initState() {
     super.initState();
+    // This screen is a tab kept alive in the background: refresh when it is
+    // shown and poll Wi-Fi only while it is on screen.
+    final home = Get.find<HomeController>();
+    _tabWatch = ever<int>(home.currentTab, _onTab);
+    _onTab(home.currentTab.value);
+  }
+
+  void _onTab(int tab) {
+    final visible = tab == AppTab.cluster;
+    if (!visible) {
+      _wifiTimer?.cancel();
+      _wifiTimer = null;
+      return;
+    }
+    if (_wifiTimer != null) return;
     cluster.refreshWorkerStatus();
     cluster.refreshWifiAddress();
     cluster.ensureWorkerCode();
@@ -35,6 +52,7 @@ class _ClusterViewState extends State<ClusterView> {
 
   @override
   void dispose() {
+    _tabWatch?.dispose();
     _wifiTimer?.cancel();
     super.dispose();
   }
@@ -44,7 +62,7 @@ class _ClusterViewState extends State<ClusterView> {
     final t = AppTokens.of(context);
     return Scaffold(
       backgroundColor: t.bg,
-      appBar: appScreenBar(context, title: 'Phone cluster', showBack: true),
+      appBar: appScreenBar(context, title: 'Cluster'),
       body: Obx(() {
         final role = cluster.role;
         return ListView(

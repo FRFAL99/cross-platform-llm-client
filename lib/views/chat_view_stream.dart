@@ -44,7 +44,7 @@ extension _StreamSection on ChatView {
 
   // ── Empty State ──
   Widget _emptyState(BuildContext context, bool isDark) =>
-      const HomeEmptyState();
+      const ChatEmptyState();
 
   // ── Streaming Bubble ──
   Widget _streamBubble(BuildContext context, String text, bool isDark) {
