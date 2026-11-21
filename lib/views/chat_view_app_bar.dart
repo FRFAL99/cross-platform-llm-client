@@ -20,20 +20,21 @@ extension _AppBarSection on ChatView {
       titleSpacing: 0,
       leadingWidth: 52,
       leading: IconButton(
-        tooltip: 'Chats',
+        tooltip: 'Back',
         onPressed: () {
           FocusManager.instance.primaryFocus?.unfocus();
-          Get.find<HomeController>().openSidebar();
+          Get.back();
         },
-        icon: SidebarGlyph(color: isDark ? Colors.white : Colors.black),
+        icon: Icon(Icons.arrow_back_rounded,
+            color: isDark ? Colors.white : Colors.black),
       ),
       title: Obx(() {
         final text = isDark ? Colors.white : Colors.black;
-        // Home: a quiet wordmark — the model card below carries the status.
+        // New chat: a plain title — the empty state carries the model.
         if (controller.messages.isEmpty) {
           return Padding(
             padding: const EdgeInsets.only(right: 16),
-            child: Text('OneLM',
+            child: Text('Try the model',
                 style: TextStyle(
                     fontFamily: 'Inter',
                     fontWeight: FontWeight.w700,
@@ -117,7 +118,7 @@ extension _AppBarSection on ChatView {
         Obx(() {
           // Already on a blank chat — a "new chat" button would only create
           // empty sessions.
-          if (controller.messages.isEmpty) return const SizedBox(width: 8);
+          if (controller.messages.isEmpty) return const SizedBox.shrink();
           return IconButton(
               tooltip: 'New chat',
               icon: Icon(Icons.edit_square,
@@ -127,6 +128,16 @@ extension _AppBarSection on ChatView {
                 controller.createNewChat();
               });
         }),
+        Builder(
+          builder: (ctx) => IconButton(
+            tooltip: 'Chats',
+            onPressed: () {
+              FocusManager.instance.primaryFocus?.unfocus();
+              Scaffold.of(ctx).openEndDrawer();
+            },
+            icon: SidebarGlyph(color: isDark ? Colors.white : Colors.black),
+          ),
+        ),
         const SizedBox(width: 4),
       ],
     );
@@ -298,7 +309,7 @@ extension _AppBarSection on ChatView {
                     child: TonalButton.neutral(ctx, label: 'Switch model',
                         onTap: () {
                       Navigator.pop(ctx);
-                      Get.find<HomeController>().changeTab(1);
+                      Get.find<HomeController>().openTab(AppTab.models);
                     }),
                   ),
                   if (info.canUnload) ...[

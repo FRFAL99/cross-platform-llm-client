@@ -58,10 +58,6 @@
 	<string>This app requires access to the camera to take photos for analysis.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
-	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>This app uses speech recognition to convert your voice to text for chat input.</string>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>This app requires microphone access for voice-to-text input.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

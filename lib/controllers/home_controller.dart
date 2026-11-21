@@ -1,18 +1,29 @@
-import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
-class HomeController extends GetxController {
-  final currentTab = 0.obs;
+import '../core/routes.dart';
 
-  /// Root scaffold key — the chat sidebar hangs off the root so it slides
-  /// over the bottom navigation bar instead of under it.
-  final scaffoldKey = GlobalKey<ScaffoldState>();
+/// The four tabs of the main screen. The chat is not a tab: it is a test
+/// bench for the loaded model and opens on its own page from Home.
+abstract class AppTab {
+  static const home = 0;
+  static const models = 1;
+  static const server = 2;
+  static const cluster = 3;
+}
+
+class HomeController extends GetxController {
+  final currentTab = AppTab.home.obs;
 
   void changeTab(int index) {
     currentTab.value = index;
   }
 
-  void openSidebar() => scaffoldKey.currentState?.openDrawer();
+  /// Shows [index] from anywhere, closing pages pushed over the tabs
+  /// (the chat, settings, the speed test).
+  void openTab(int index) {
+    Get.until((route) => route.isFirst);
+    changeTab(index);
+  }
 
-  void closeSidebar() => scaffoldKey.currentState?.closeDrawer();
+  void openChat() => Get.toNamed(AppRoutes.chat);
 }

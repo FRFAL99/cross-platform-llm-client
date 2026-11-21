@@ -18,7 +18,9 @@ class AppPages {
       page: () => const HomeView(),
       binding: BindingsBuilder(() {
         Get.lazyPut(() => HomeController());
-        Get.lazyPut(() => ChatController());
+        // Kept for the whole session: the chat page comes and goes, its
+        // conversation and a running answer must not.
+        Get.put(ChatController(), permanent: true);
         Get.lazyPut(() => ModelController());
         Get.lazyPut(() => SettingsController());
       }),
@@ -26,9 +28,6 @@ class AppPages {
     GetPage(
       name: AppRoutes.chat,
       page: () => const ChatView(),
-      binding: BindingsBuilder(() {
-        Get.lazyPut(() => ChatController());
-      }),
     ),
   ];
 }

@@ -67,9 +67,6 @@ extension _StatusSection on ModelView {
             .firstWhereOrNull((m) => m.mmprojFilename == filename);
         // Lead with "Vision file" so it stays visible when the name is cut off.
         if (owner != null) return 'Vision file · ${owner.name}';
-        if (filename.toLowerCase().startsWith('taesd')) {
-          return 'Image decoder (TAESD)';
-        }
         return filename;
       }
 

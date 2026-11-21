@@ -2,10 +2,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../controllers/model_controller.dart';
+import '../controllers/settings_controller.dart';
 import '../core/ui.dart';
 import '../models/ai_model.dart';
 import '../services/download_service.dart';
 import '../services/inference_service.dart';
+import 'load_settings_view.dart';
 
 part 'model_view_import.dart';
 part 'model_view_status.dart';
@@ -63,6 +65,7 @@ class ModelView extends GetView<ModelController> {
               if (scope == 'local') ...[
                 _buildImportingProgress(context),
                 ..._buildLibrary(context),
+                _buildLoadSettingsRow(context),
               ] else ...[
                 _buildFeatured(context),
                 _buildLocalFilterChips(context),
@@ -84,6 +87,26 @@ class ModelView extends GetView<ModelController> {
           selected: controller.modelScope.value,
           onChanged: (value) => controller.modelScope.value = value,
         ));
+  }
+
+  /// How models load: processor, context, what this phone can handle.
+  Widget _buildLoadSettingsRow(BuildContext context) {
+    final settings = Get.find<SettingsController>();
+    final t = AppTokens.of(context);
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      const SectionHeader('Loading'),
+      AppGroup(children: [
+        Obx(() => AppRow(
+              icon: Icons.memory_rounded,
+              title: 'Load settings',
+              subtitle: 'Processor, context size, this phone',
+              trailing: Text(LoadSettingsView.summary(settings),
+                  style: t.caption.copyWith(fontSize: 14)),
+              chevron: true,
+              onTap: () => Get.to(() => const LoadSettingsView()),
+            )),
+      ]),
+    ]);
   }
 
   Widget _buildLocalActions(BuildContext context) {

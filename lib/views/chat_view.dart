@@ -14,7 +14,7 @@ import '../utils/thought_parser.dart';
 import '../widgets/attachment_preview.dart';
 import '../widgets/chat_bubble.dart';
 import '../widgets/chat_drawer.dart';
-import '../widgets/home_empty_state.dart';
+import '../widgets/chat_empty_state.dart';
 import '../core/ui.dart';
 import '../widgets/thought_disclosure.dart';
 import '../core/haptics.dart';
@@ -41,6 +41,10 @@ class ChatView extends GetView<ChatController> {
     Widget scaffold = Scaffold(
       backgroundColor: isDark ? Colors.black : Colors.white,
       appBar: _appBar(context, isDark),
+      // Past conversations slide in from the right; the left edge is the
+      // back gesture.
+      endDrawer: const ChatDrawer(),
+      drawerScrimColor: Colors.black.withValues(alpha: isDark ? 0.6 : 0.32),
       body: Column(
         children: [
           _modelLoadingBar(context, isDark),

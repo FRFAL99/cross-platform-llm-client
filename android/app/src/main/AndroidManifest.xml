@@ -12,8 +12,6 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
     <!-- Cluster worker: asks to keep running at full speed -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-    <!-- Microphone for speech-to-text -->
-    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <!-- In-app updates from GitHub Releases -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
