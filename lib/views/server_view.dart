@@ -5,9 +5,11 @@ import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:http/http.dart' as http;
 
+import '../controllers/home_controller.dart';
 import '../controllers/server_controller.dart';
 import '../core/ui.dart';
 import '../core/haptics.dart';
+import '../services/server/api_examples.dart';
 
 class ServerView extends GetView<ServerController> {
   const ServerView({super.key});
@@ -36,30 +38,32 @@ class ServerView extends GetView<ServerController> {
               AppNotice(error, icon: Icons.error_outline_rounded, color: t.red),
             ],
 
-            // ── Model ──
-            const SectionHeader('Model'),
-            AppGroup(children: [
-              AppRow(
-                icon: Icons.memory_rounded,
-                title: controller.modelName,
-                subtitle: controller.hasLocalModel
-                    ? 'Loaded on this device'
-                    : 'Load a GGUF model to serve it',
-                trailing: controller.hasLocalModel
-                    ? AppTag('Ready', color: t.green)
-                    : AppTag('Not loaded', color: t.orange),
-              ),
-            ]),
+            // ── Address ──
+            if (isRunning) ...[
+              const SectionHeader('Address'),
+              AppGroup(children: [
+                _UrlRow(
+                    label: 'OpenAI base URL',
+                    url: controller.localUrl.value == null
+                        ? null
+                        : controller.openAiBaseUrl),
+              ]),
+              const SectionFootnote(
+                  'Any model name works: the loaded model always answers. '
+                  'One request runs at a time; others wait their turn.'),
+              const SizedBox(height: 12),
+              _HealthTest(baseUrl: controller.localUrl.value),
+            ],
 
             // ── Access ──
             const SectionHeader('Access'),
             AppGroup(children: [
               AppRow(
-                icon: Icons.lan_outlined,
+                icon: Icons.wifi_rounded,
                 title: 'Allow network access',
                 subtitle: allowNetwork
-                    ? 'Reachable from other devices on your network'
-                    : 'Only apps on this device can connect',
+                    ? 'Reachable from other devices on your Wi-Fi'
+                    : 'Only apps on this phone can connect',
                 trailing: Switch(
                   value: allowNetwork,
                   onChanged:
@@ -79,42 +83,43 @@ class ServerView extends GetView<ServerController> {
                 ),
               ),
             ]),
-            const SizedBox(height: 12),
-            AppField(
-              label: 'API key',
-              helper: controller.requiresApiKey
-                  ? 'Required for every request.'
-                  : 'Optional. Only checked when "Require API key" is on.',
-              child: TextField(
-                controller: controller.apiKeyCtrl,
-                onChanged: controller.onApiKeyEdited,
-                onSubmitted: (_) => controller.saveSettings(),
-                style: t.mono.copyWith(fontSize: 13.5),
-                autocorrect: false,
-                enableSuggestions: false,
-                decoration: appInputDecoration(
-                  context,
-                  hint: controller.requiresApiKey ? 'Required' : 'Optional',
-                  suffix: Row(mainAxisSize: MainAxisSize.min, children: [
-                    IconButton(
-                      tooltip: 'Generate key',
-                      visualDensity: VisualDensity.compact,
-                      onPressed: () {
-                        Haptics.lightImpact();
-                        controller.generateApiKey();
-                      },
-                      icon:
-                          Icon(Icons.refresh_rounded, size: 19, color: t.muted),
-                    ),
-                    _CopyButton(
-                      text: hasKey ? controller.apiKey.value : null,
-                      tooltip: 'Copy key',
-                    ),
-                    const SizedBox(width: 4),
-                  ]),
+            if (controller.requiresApiKey) ...[
+              const SizedBox(height: 12),
+              AppField(
+                label: 'API key',
+                helper: 'Required for every request. Stored in the '
+                    'phone\'s secure storage.',
+                child: TextField(
+                  controller: controller.apiKeyCtrl,
+                  onChanged: controller.onApiKeyEdited,
+                  onSubmitted: (_) => controller.saveSettings(),
+                  style: t.mono.copyWith(fontSize: 13.5),
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  decoration: appInputDecoration(
+                    context,
+                    hint: 'Required',
+                    suffix: Row(mainAxisSize: MainAxisSize.min, children: [
+                      IconButton(
+                        tooltip: 'Generate key',
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () {
+                          Haptics.lightImpact();
+                          controller.generateApiKey();
+                        },
+                        icon: Icon(Icons.refresh_rounded,
+                            size: 19, color: t.muted),
+                      ),
+                      _CopyButton(
+                        text: hasKey ? controller.apiKey.value : null,
+                        tooltip: 'Copy key',
+                      ),
+                      const SizedBox(width: 4),
+                    ]),
+                  ),
                 ),
               ),
-            ),
+            ],
 
             // ── Background (Android) ──
             if (controller.batteryUnrestricted.value != null) ...[
@@ -132,7 +137,7 @@ class ServerView extends GetView<ServerController> {
                   AppRow(
                     icon: Icons.battery_alert_outlined,
                     title: 'Battery optimization is on',
-                    subtitle: 'Android may pause the server after a while. '
+                    subtitle: 'Android may pause the server in the background. '
                         'Allow OneLM to run without limits.',
                     trailing: PillButton(
                       label: 'Allow',
@@ -142,168 +147,57 @@ class ServerView extends GetView<ServerController> {
               ]),
             ],
 
-            // ── Endpoints ──
-            if (isRunning) ...[
-              const SectionHeader('Endpoints'),
-              AppGroup(children: [
-                _UrlRow(label: 'Base URL', url: controller.localUrl.value),
-                _UrlRow(
-                    label: 'OpenAI base URL',
-                    url: controller.localUrl.value == null
-                        ? null
-                        : controller.openAiBaseUrl),
-                _UrlRow(
-                    label: 'Model',
-                    url: controller.inference.loadedModelName.value),
-              ]),
-              const SizedBox(height: 12),
-              AppNotice(
-                allowNetwork
-                    ? 'Other devices on the same Wi-Fi use the base URL above '
-                        'with the API key. Any model name works: the loaded '
-                        'model always answers. One request runs at a time; '
-                        'others wait their turn.'
-                    : 'Apps on this phone use the base URL above. Turn on '
-                        'network access to reach it from your computer. Any '
-                        'model name works: the loaded model always answers.',
-                icon: Icons.info_outline_rounded,
-                color: t.muted,
-              ),
-              const SizedBox(height: 12),
-              _HealthTest(baseUrl: controller.localUrl.value),
-
-              // ── Examples ──
-              const SectionHeader('Usage examples'),
-              _CodeBlock(
-                title: 'List models',
-                lang: 'curl',
-                code: 'curl ${controller.baseUrl}/v1/models${_authHeader()}',
-              ),
-              const SizedBox(height: 12),
-              _CodeBlock(
-                title: 'Chat completion',
-                lang: 'curl',
-                code:
-                    'curl ${controller.baseUrl}/v1/chat/completions \\\n  -H "Content-Type: application/json"${_authHeader()} \\\n  -d \'{"model":"${controller.inference.loadedModelName.value}","messages":[{"role":"user","content":"Hello"}]}\'',
-              ),
-              const SizedBox(height: 12),
-              _CodeBlock(
-                title: 'OpenAI SDK',
-                lang: 'python',
-                code: _pythonExample(),
-              ),
-              const SizedBox(height: 12),
-              _CodeBlock(
-                title: 'Streaming',
-                lang: 'python',
-                code: _pythonStreamingExample(),
-              ),
-              const SizedBox(height: 12),
-              _CodeBlock(
-                title: 'Tool calling',
-                lang: 'python',
-                code: _pythonToolsExample(),
-              ),
-              const SizedBox(height: 12),
-              _CodeBlock(
-                title: 'OpenAI SDK',
-                lang: 'javascript',
-                code: _javascriptExample(),
-              ),
-              const SizedBox(height: 12),
-              _CodeBlock(
-                title: 'Decisions (yes/no, choice, score)',
-                lang: 'python',
-                code: _pythonDecisionsExample(),
-              ),
-            ],
+            // ── Examples ──
+            const SectionHeader('Use it from your code'),
+            _Examples(controller: controller),
           ],
         );
       }),
     );
   }
+}
 
-  String get _pythonClient => 'from openai import OpenAI\n\n'
-      'client = OpenAI(\n'
-      '    base_url="${controller.openAiBaseUrl}",\n'
-      '    api_key="${controller.clientApiKey}",\n'
-      ')\n';
+/// One example at a time: pick what to do and the language.
+class _Examples extends StatefulWidget {
+  final ServerController controller;
+  const _Examples({required this.controller});
 
-  String _pythonExample() => '$_pythonClient\n'
-      'response = client.chat.completions.create(\n'
-      '    model="local",\n'
-      '    messages=[{"role": "user", "content": "Hello"}],\n'
-      ')\n'
-      'print(response.choices[0].message.content)';
+  @override
+  State<_Examples> createState() => _ExamplesState();
+}
 
-  String _pythonStreamingExample() => '$_pythonClient\n'
-      'stream = client.chat.completions.create(\n'
-      '    model="local",\n'
-      '    messages=[{"role": "user", "content": "Write a haiku"}],\n'
-      '    stream=True,\n'
-      ')\n'
-      'for chunk in stream:\n'
-      '    print(chunk.choices[0].delta.content or "", end="", flush=True)';
+class _ExamplesState extends State<_Examples> {
+  var _topic = ApiExampleTopic.chat;
+  var _language = ApiExampleLanguage.python;
 
-  /// Typed decisions: answers with probabilities, no generated text.
-  String _pythonDecisionsExample() => 'import requests\n\n'
-      'answers = requests.post(\n'
-      '    "${controller.baseUrl}/v1/decisions",\n'
-      '    headers={"Authorization": "Bearer ${controller.clientApiKey}"},\n'
-      '    json={\n'
-      '        "state": "Help! My payouts have been failing for 3 days.",\n'
-      '        "questions": {\n'
-      '            "urgent": {"type": "boolean",\n'
-      '                       "instructions": "Does this convey urgency?"},\n'
-      '            "topic": {"type": "choice",\n'
-      '                      "instructions": "What is it about?",\n'
-      '                      "options": [\n'
-      '                          {"id": "billing", "description": "Payments or invoices"},\n'
-      '                          {"id": "bug", "description": "Something broken in the app"},\n'
-      '                          {"id": "other", "description": "Anything else"}]},\n'
-      '        },\n'
-      '    },\n'
-      ').json()["answers"]\n'
-      'print(answers["urgent"]["probabilities"]["true"])\n'
-      'print(answers["topic"]["choice"])';
-
-  String _pythonToolsExample() => '$_pythonClient\n'
-      'tools = [{\n'
-      '    "type": "function",\n'
-      '    "function": {\n'
-      '        "name": "get_weather",\n'
-      '        "description": "Current weather for a city",\n'
-      '        "parameters": {\n'
-      '            "type": "object",\n'
-      '            "properties": {"city": {"type": "string"}},\n'
-      '            "required": ["city"],\n'
-      '        },\n'
-      '    },\n'
-      '}]\n\n'
-      'response = client.chat.completions.create(\n'
-      '    model="local",\n'
-      '    messages=[{"role": "user", "content": "Weather in Rome?"}],\n'
-      '    tools=tools,\n'
-      ')\n'
-      'print(response.choices[0].message.tool_calls)\n'
-      '# Works best with models trained for tools (Qwen 2.5/3, Hermes, Llama 3.1+).';
-
-  String _javascriptExample() => 'import OpenAI from "openai";\n\n'
-      'const client = new OpenAI({\n'
-      '  baseURL: "${controller.openAiBaseUrl}",\n'
-      '  apiKey: "${controller.clientApiKey}",\n'
-      '});\n\n'
-      'const response = await client.chat.completions.create({\n'
-      '  model: "local",\n'
-      '  messages: [{ role: "user", content: "Hello" }],\n'
-      '});\n'
-      'console.log(response.choices[0].message.content);';
-
-  String _authHeader() {
-    if (controller.requiresApiKey && controller.apiKey.value.isNotEmpty) {
-      return ' \\\n  -H "Authorization: Bearer ${controller.apiKey.value}"';
-    }
-    return '';
+  @override
+  Widget build(BuildContext context) {
+    final c = widget.controller;
+    final key = c.requiresApiKey ? c.apiKey.value : null;
+    final code = apiExample(_topic, _language, baseUrl: c.baseUrl, apiKey: key);
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      AppChips<ApiExampleTopic>(
+        items: [for (final x in ApiExampleTopic.values) (x, x.label)],
+        selected: _topic,
+        onSelected: (x) => setState(() => _topic = x),
+      ),
+      const SizedBox(height: 8),
+      AppSegmented<ApiExampleLanguage>(
+        items: [for (final x in ApiExampleLanguage.values) (x, x.label)],
+        selected: _language,
+        onChanged: (x) => setState(() => _language = x),
+      ),
+      const SizedBox(height: 12),
+      _CodeBlock(title: _topic.label, lang: _language.label, code: code),
+      if (_topic == ApiExampleTopic.decisions)
+        const SectionFootnote(
+            'Typed answers (yes/no, choice, score, number) with '
+            'probabilities, without generating text.'),
+      if (!c.isRunning.value)
+        const SectionFootnote(
+            'Start the server to use these. With network access on, the '
+            'address becomes this phone\'s Wi-Fi address.'),
+    ]);
   }
 }
 
@@ -362,6 +256,14 @@ class _StatusHero extends StatelessWidget {
               Haptics.mediumImpact();
               controller.toggleServer(false);
             }),
+          )
+        else if (!controller.hasLocalModel && !isStarting)
+          SizedBox(
+            width: double.infinity,
+            child: TonalButton.neutral(context,
+                label: 'Load a model first',
+                onTap: () =>
+                    Get.find<HomeController>().changeTab(AppTab.models)),
           )
         else
           PrimaryButton(

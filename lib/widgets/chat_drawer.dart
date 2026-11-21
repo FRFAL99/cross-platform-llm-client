@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../controllers/chat_controller.dart';
-import '../controllers/home_controller.dart';
 import '../models/chat_session.dart';
 import 'tonal_button.dart';
 import '../core/haptics.dart';
@@ -52,7 +51,7 @@ class _ChatDrawerState extends State<ChatDrawer> {
 
   ChatController get _chat => Get.find<ChatController>();
 
-  void _close() => Get.find<HomeController>().closeSidebar();
+  void _close() => Navigator.of(context).pop();
 
   void _newChat() {
     Haptics.selectionClick();
@@ -60,14 +59,12 @@ class _ChatDrawerState extends State<ChatDrawer> {
     if (_chat.messages.isNotEmpty || _chat.currentSessionId.value.isEmpty) {
       _chat.createNewChat();
     }
-    Get.find<HomeController>().changeTab(0);
     _close();
   }
 
   void _open(ChatSession s) {
     Haptics.selectionClick();
     if (_chat.currentSessionId.value != s.id) _chat.openChat(s.id);
-    Get.find<HomeController>().changeTab(0);
     _close();
   }
 

@@ -9,7 +9,6 @@ import 'package:get/get.dart';
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:uuid/uuid.dart';
 import '../controllers/settings_controller.dart';
 import '../core/ui.dart';
@@ -71,11 +70,6 @@ class ChatController extends GetxController {
   final isStreaming = false.obs;
   final streamingAttachmentType = Rxn<String>();
 
-  // Speech-to-text
-  final isListening = false.obs;
-  final sttAvailable = false.obs;
-  final _speech = stt.SpeechToText();
-
   final textController = TextEditingController();
   final inputFocus = FocusNode();
   final scrollController = ScrollController();
@@ -90,68 +84,6 @@ class ChatController extends GetxController {
     scrollController.addListener(_handleUserScroll);
     _scrollListenerAttached = true;
     loadSessions();
-    _initSpeech();
-  }
-
-  Future<void> _initSpeech() async {
-    try {
-      sttAvailable.value = await _speech.initialize(
-        onError: (error) {
-          isListening.value = false;
-          // Recognition is on-device only, so a missing offline language
-          // pack shows up as a language or network error.
-          final msg = error.errorMsg;
-          if (msg.contains('language') || msg.contains('network')) {
-            showToast(
-              'Voice input unavailable offline',
-              'Download the offline speech language for your phone language '
-                  'in the system voice input settings.',
-              tone: ToastTone.error,
-            );
-          }
-        },
-        onStatus: (status) {
-          if (status == 'done' || status == 'notListening') {
-            isListening.value = false;
-          }
-        },
-      );
-    } catch (_) {
-      sttAvailable.value = false;
-    }
-  }
-
-  Future<void> toggleListening() async {
-    try {
-      if (isListening.value) {
-        await _speech.stop();
-        isListening.value = false;
-        return;
-      }
-      if (!sttAvailable.value) {
-        try {
-          final ok = await _speech.initialize();
-          sttAvailable.value = ok;
-        } catch (_) {
-          sttAvailable.value = false;
-        }
-        if (!sttAvailable.value) return;
-      }
-      await _speech.listen(
-        onResult: (result) {
-          textController.text = result.recognizedWords;
-          inputText.value = result.recognizedWords;
-        },
-        listenFor: const Duration(seconds: 60),
-        pauseFor: const Duration(seconds: 4),
-        // Privacy: never send audio to a cloud speech service. Uses the
-        // phone's language; fails if its offline model isn't installed.
-        listenOptions: stt.SpeechListenOptions(onDevice: true),
-      );
-      isListening.value = true;
-    } catch (_) {
-      isListening.value = false;
-    }
   }
 
   @override
