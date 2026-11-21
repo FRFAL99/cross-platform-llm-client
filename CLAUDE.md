@@ -4,7 +4,7 @@ Context for working on this repository. The owner is Francesco (GitHub `FRFAL99`
 
 ## What this is
 
-PrivateLM: a Flutter app, forked from `orailnoor/cross-platform-llm-client`, with one purpose:
+OneLM (called PrivateLM until the rename; package id `io.github.frfal99.onelm`, Dart package `onelm`): a Flutter app, forked from `orailnoor/cross-platform-llm-client`, with one purpose:
 
 1. **Run a model on the phone**: GGUF via llama.cpp (`local_plugins/llama_flutter_android`), GPU offload (Vulkan), automatic settings from the device RAM.
 2. **Run it across a cluster of phones** (`ClusterService`, llama.cpp RPC over the same Wi-Fi).
@@ -24,6 +24,7 @@ Everything runs on the user's devices. The only network calls are the ones the u
 
 ## Rules and decisions
 
+- **Name**: the app is OneLM. Internal identifiers keep the old name on purpose, because they are protocol or data: the cluster's mDNS type `_privatelm._tcp`, the pairing/crypto labels and `privatelm-*.h` files, wake-lock tags, the keystore alias `privatelm` and `PRIVATELM_ALLOW_DEBUG_RELEASE_SIGNING`. Third-party credits live in `THIRD_PARTY_NOTICES.md` and `lib/core/third_party_licenses.dart` (Settings › About › Open-source licenses): keep both in sync when a native component, font or bundled library changes, and give every catalogue model a `license`.
 - **No cloud providers**: OpenAI, Anthropic, Gemini, OpenRouter and custom endpoints were removed (CloudService, cloud model picker, inference mode). Don't bring them back.
 - **Secrets**: credentials never go in plain Hive. `HiveService.secretKeys` (today only the server API key) routes them to `flutter_secure_storage` (Keystore/Keychain); add any new credential setting to that set.
 - **Updates**: in-app updates read GitHub Releases of `AppConstants.githubRepo`, which must point to this fork. The automatic check is off by default; the user checks manually.

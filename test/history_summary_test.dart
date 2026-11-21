@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:privatelm/models/chat_session.dart';
-import 'package:privatelm/services/history_summary.dart';
+import 'package:onelm/models/chat_session.dart';
+import 'package:onelm/services/history_summary.dart';
 
 void main() {
   List<Map<String, String>> chat(int n) => [

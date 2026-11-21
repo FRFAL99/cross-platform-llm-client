@@ -4,8 +4,8 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
-import 'package:privatelm/services/inference_service.dart';
-import 'package:privatelm/services/openai_server_service_io.dart';
+import 'package:onelm/services/inference_service.dart';
+import 'package:onelm/services/openai_server_service_io.dart';
 
 void main() {
   late OpenAiServerService server;

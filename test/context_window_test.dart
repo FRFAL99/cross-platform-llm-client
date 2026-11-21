@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:privatelm/services/context_window.dart';
+import 'package:onelm/services/context_window.dart';
 
 void main() {
   List<Map<String, String>> chat(int n) => [

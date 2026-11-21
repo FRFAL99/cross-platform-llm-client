@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:privatelm/core/redact.dart';
+import 'package:onelm/core/redact.dart';
 
 void main() {
   group('redactSecrets', () {

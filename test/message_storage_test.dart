@@ -3,9 +3,9 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
-import 'package:privatelm/core/constants.dart';
-import 'package:privatelm/services/chat_image_store.dart';
-import 'package:privatelm/services/hive_service.dart';
+import 'package:onelm/core/constants.dart';
+import 'package:onelm/services/chat_image_store.dart';
+import 'package:onelm/services/hive_service.dart';
 
 Map<String, dynamic> msg(String id, String chatId, {String? image}) => {
       'id': id,

@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:privatelm/services/server/json_grammar.dart';
-import 'package:privatelm/services/server/tool_calling.dart';
+import 'package:onelm/services/server/json_grammar.dart';
+import 'package:onelm/services/server/tool_calling.dart';
 
 /// Rule names a grammar defines.
 Set<String> rules(String gbnf) => {

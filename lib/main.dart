@@ -3,8 +3,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/foundation.dart'
-    show kIsWeb, LicenseEntryWithLineBreaks, LicenseRegistry;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:get/get.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'controllers/settings_controller.dart';
@@ -20,6 +19,7 @@ import 'services/update_service.dart';
 import 'services/device_info_service.dart';
 import 'services/app_log_service.dart';
 import 'core/constants.dart';
+import 'core/third_party_licenses.dart';
 
 void main() {
   final appLogBuffer = <String>[];
@@ -27,13 +27,8 @@ void main() {
   runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
 
-    // Bundled fonts are under the SIL Open Font License.
-    LicenseRegistry.addLicense(() async* {
-      for (final font in ['Inter', 'FiraCode']) {
-        final text = await rootBundle.loadString('assets/fonts/$font-OFL.txt');
-        yield LicenseEntryWithLineBreaks([font], text);
-      }
-    });
+    // Native libraries and fonts that Flutter's NOTICES doesn't list.
+    registerThirdPartyLicenses();
 
     // Register logger first so everything routes to it
     final appLog = AppLogService();
@@ -106,7 +101,7 @@ void main() {
     // Keep last model as a quick-load option, but do not auto-load on startup.
     _validateLastModel();
 
-    runApp(const PrivateLMApp());
+    runApp(const OneLMApp());
 
     // Apply system UI after frame is rendered so Get.mediaQuery is available
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -171,8 +166,8 @@ void _autoConfigureForDevice() {
       'maxTokens=${device.recommendedMaxTokens} for ${device.totalRamGB.value.toStringAsFixed(1)}GB RAM');
 }
 
-class PrivateLMApp extends StatelessWidget {
-  const PrivateLMApp({super.key});
+class OneLMApp extends StatelessWidget {
+  const OneLMApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -181,7 +176,7 @@ class PrivateLMApp extends StatelessWidget {
       final themeMode = settings.themeMode.value;
       final scale = settings.fontScale.value; // read here → Obx tracks it
       return GetMaterialApp(
-        title: 'PrivateLM',
+        title: 'OneLM',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.lightTheme,
         darkTheme: AppTheme.darkTheme,

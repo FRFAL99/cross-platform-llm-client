@@ -125,7 +125,7 @@ class ServerView extends GetView<ServerController> {
                   title: 'Keeps running in the background',
                   subtitle:
                       'While the server is on, it answers with the screen '
-                      'off, another app open, or PrivateLM closed from '
+                      'off, another app open, or OneLM closed from '
                       'recent apps. Stop it here or from its notification.',
                 ),
                 if (controller.batteryUnrestricted.value == false)
@@ -133,7 +133,7 @@ class ServerView extends GetView<ServerController> {
                     icon: Icons.battery_alert_outlined,
                     title: 'Battery optimization is on',
                     subtitle: 'Android may pause the server after a while. '
-                        'Allow PrivateLM to run without limits.',
+                        'Allow OneLM to run without limits.',
                     trailing: PillButton(
                       label: 'Allow',
                       onPressed: controller.requestBatteryUnrestricted,

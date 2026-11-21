@@ -171,6 +171,11 @@ extension _FeaturedSection on ModelView {
           children: [
             if (model.description.trim().isNotEmpty)
               Text(model.description, style: t.body.copyWith(color: t.muted)),
+            if (model.license.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text('License: ${model.license}',
+                  style: t.caption.copyWith(color: t.muted)),
+            ],
             if (tags.isNotEmpty) ...[
               const SizedBox(height: 12),
               Wrap(spacing: 6, runSpacing: 6, children: tags),

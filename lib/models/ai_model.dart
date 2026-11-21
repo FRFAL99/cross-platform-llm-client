@@ -27,6 +27,10 @@ class AiModel {
 
   bool get hasVisionProjector => mmprojFilename.isNotEmpty;
 
+  /// License of the model weights, as published on Hugging Face (catalogue
+  /// entries only; empty for imported files).
+  final String license;
+
   /// Model-list filters ('general', 'vision', 'image', 'uncensored') in
   /// which this model is tagged as the recommended pick.
   final Set<String> recommendedFor;
@@ -44,6 +48,7 @@ class AiModel {
     this.isCustom = false,
     this.mmprojFilename = '',
     this.mmprojUrl = '',
+    this.license = '',
     this.recommendedFor = const {},
   }) : runtime = runtime ?? runtimeFromFilename(filename, template: template);
 
@@ -60,6 +65,7 @@ class AiModel {
         isCustom: map['custom'] == 'true',
         mmprojFilename: map['mmproj_filename'] ?? '',
         mmprojUrl: map['mmproj_url'] ?? '',
+        license: map['license'] ?? '',
         recommendedFor: (map['recommended'] ?? '')
             .split(',')
             .map((e) => e.trim())
@@ -80,6 +86,7 @@ class AiModel {
         if (isCustom) 'custom': 'true',
         if (mmprojFilename.isNotEmpty) 'mmproj_filename': mmprojFilename,
         if (mmprojUrl.isNotEmpty) 'mmproj_url': mmprojUrl,
+        if (license.isNotEmpty) 'license': license,
         if (recommendedFor.isNotEmpty) 'recommended': recommendedFor.join(','),
       };
 
@@ -100,6 +107,7 @@ class AiModel {
     bool? isCustom,
     String? mmprojFilename,
     String? mmprojUrl,
+    String? license,
     Set<String>? recommendedFor,
   }) {
     return AiModel(
@@ -115,6 +123,7 @@ class AiModel {
       isCustom: isCustom ?? this.isCustom,
       mmprojFilename: mmprojFilename ?? this.mmprojFilename,
       mmprojUrl: mmprojUrl ?? this.mmprojUrl,
+      license: license ?? this.license,
       recommendedFor: recommendedFor ?? this.recommendedFor,
     );
   }

@@ -191,7 +191,7 @@ class OpenAiServerService {
     final inference = Get.find<InferenceService>();
     final hasModel = inference.isModelLoaded.value;
     await _json(request, {
-      'server': 'PrivateLM',
+      'server': 'OneLM',
       'running': true,
       'model': hasModel ? inference.loadedModelName.value : null,
       'runtime': inference.loadedModelRuntime.value,

@@ -1,6 +1,6 @@
 {
-    "name": "PrivateLM",
-    "short_name": "PrivateLM",
+    "name": "OneLM",
+    "short_name": "OneLM",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
