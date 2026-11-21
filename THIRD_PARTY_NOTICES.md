@@ -22,6 +22,7 @@ both when a component is added or removed.
 | miniaudio (used by llama.cpp's multimodal library) | `llama.cpp/vendor/miniaudio` | Public domain or MIT No Attribution, © David Reid |
 | Vulkan-Headers (build time, Vulkan backend) | downloaded by `android/CMakeLists.txt` | Apache-2.0 OR MIT (used under MIT), © The Khronos Group Inc. |
 | SPIRV-Headers (build time, Vulkan backend) | downloaded by `android/CMakeLists.txt` | Khronos MIT-style license, © The Khronos Group Inc. |
+| Rizzo Flow (typed decisions: prompt, `/v1/decisions` format and logit decoding, adapted and rewritten in Dart/C++) | `lib/services/decisions/`, `nativeScoreOptions` in `jni_wrapper.cpp` | Apache-2.0, © 2026 Simone Rizzo, Rizzo AI Academy (NOTICE and license in `assets/licenses/rizzo-flow.txt`). Not affiliated |
 | X25519 after TweetNaCl, Poly1305 after poly1305-donna | `ggml-rpc/privatelm-crypto.h` | Public domain |
 | LLVM libc++ (`libc++_shared.so`, from the Android NDK) | APK | Apache-2.0 with LLVM exception (no attribution needed in binaries) |
 | PDFium (prebuilt `libpdfium.so`, chromium/8125, from bblanchon/pdfium-binaries, fetched by `pdfrx`) | APK | BSD-3-Clause / Apache-2.0, plus its bundled libraries: Abseil, AGG, FreeType, HarfBuzz, ICU, Little CMS, libjpeg-turbo, OpenJPEG, libpng, zlib and others (texts in `assets/licenses/pdfium/`) |

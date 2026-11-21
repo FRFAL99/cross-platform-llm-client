@@ -66,6 +66,13 @@ class InferenceEngine {
   Future<Never> benchmark({int prompt = 512, int gen = 128}) async =>
       throw Exception('Local inference is not available on this platform.');
 
+  Future<Never> scoreOptions({
+    required String system,
+    required List<String> users,
+    required List<int> counts,
+  }) async =>
+      throw Exception('Local inference is not available on this platform.');
+
   Future<List<int>> countTokens(List<String> texts) async =>
       List.filled(texts.length, -1);
 

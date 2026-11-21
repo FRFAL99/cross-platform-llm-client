@@ -18,6 +18,8 @@ const List<(List<String>, String)> thirdPartyLicenseAssets = [
   (['Vulkan-Headers'], 'assets/licenses/vulkan-headers.txt'),
   (['SPIRV-Headers'], 'assets/licenses/spirv-headers.txt'),
   (['TweetNaCl', 'poly1305-donna'], 'assets/licenses/crypto-public-domain.txt'),
+  // Typed decisions (/v1/decisions): prompt, format and decoding adapted.
+  (['Rizzo Flow (decisions)'], 'assets/licenses/rizzo-flow.txt'),
   // PDFium, downloaded prebuilt by pdfrx (bblanchon/pdfium-binaries,
   // chromium/8125); its Dart packages only carry the wrapper's license.
   (['PDFium'], '$_pdfium/pdfium.txt'),

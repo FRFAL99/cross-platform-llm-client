@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
+import 'package:onelm/services/decisions/decision_engine.dart';
 import 'package:onelm/services/inference_service.dart';
 import 'package:onelm/services/openai_server_service_io.dart';
 
@@ -550,6 +551,45 @@ void main() {
           headers: json, body: chatBody());
       expect(next.statusCode, 200, reason: 'server must not stay busy');
     });
+
+    group('decisions', () {
+      final decisionBody = {
+        'state': 'Payouts failing for 3 days',
+        'questions': {
+          'urgent': {'type': 'boolean', 'instructions': 'Urgent?'}
+        },
+      };
+
+      test('answers with typed decisions', () async {
+        final res = await call('POST', '/v1/decisions', json: decisionBody);
+        expect(res.status, 200);
+        final answers = jsonDecode(res.body)['answers'] as Map;
+        expect(answers['urgent']['value'], isTrue);
+        expect(fake.lastDecisionBody, decisionBody);
+      });
+
+      test('reports invalid requests as 422', () async {
+        final res = await call('POST', '/v1/decisions', json: {
+          'state': 'x',
+          'questions': {
+            'a': {'type': 'yesno', 'instructions': 'A?'}
+          },
+        });
+        expect(res.status, HttpStatus.unprocessableEntity);
+        expect(jsonDecode(res.body)['detail'], contains('type'));
+      });
+
+      test('reports 503 when stopped', () async {
+        fake.decisionStopped = true;
+        final res = await call('POST', '/v1/decisions', json: decisionBody);
+        expect(res.status, HttpStatus.serviceUnavailable);
+      });
+
+      test('advertises the capability', () async {
+        final res = await call('GET', '/v1/server/capabilities');
+        expect(jsonDecode(res.body)['capabilities']['decisions'], isTrue);
+      });
+    });
   });
 }
 
@@ -594,6 +634,25 @@ class FakeInference extends GetxService implements InferenceService {
 
   @override
   int get stopCount => stops;
+
+  Object? lastDecisionBody;
+  bool decisionStopped = false;
+
+  /// Real request validation and decoding, with fixed logits that favour
+  /// the second option ("true" for a yes/no question).
+  @override
+  Future<Map<String, dynamic>?> decide(Object? body) async {
+    lastDecisionBody = body;
+    if (decisionStopped) return null;
+    return runDecisions(body,
+        model: {'id': 'fake-model'},
+        score: (prompts) async => ScoredPrompts([
+              for (final p in prompts)
+                OptionScores(
+                    [for (var i = 0; i < p.options; i++) i == 1 ? 5.0 : 0.0],
+                    10),
+            ], 5));
+  }
 
   @override
   Future<String> generate({

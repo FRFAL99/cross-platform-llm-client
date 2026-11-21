@@ -210,6 +210,12 @@ class ServerView extends GetView<ServerController> {
                 lang: 'javascript',
                 code: _javascriptExample(),
               ),
+              const SizedBox(height: 12),
+              _CodeBlock(
+                title: 'Decisions (yes/no, choice, score)',
+                lang: 'python',
+                code: _pythonDecisionsExample(),
+              ),
             ],
           ],
         );
@@ -238,6 +244,28 @@ class ServerView extends GetView<ServerController> {
       ')\n'
       'for chunk in stream:\n'
       '    print(chunk.choices[0].delta.content or "", end="", flush=True)';
+
+  /// Typed decisions: answers with probabilities, no generated text.
+  String _pythonDecisionsExample() => 'import requests\n\n'
+      'answers = requests.post(\n'
+      '    "${controller.baseUrl}/v1/decisions",\n'
+      '    headers={"Authorization": "Bearer ${controller.clientApiKey}"},\n'
+      '    json={\n'
+      '        "state": "Help! My payouts have been failing for 3 days.",\n'
+      '        "questions": {\n'
+      '            "urgent": {"type": "boolean",\n'
+      '                       "instructions": "Does this convey urgency?"},\n'
+      '            "topic": {"type": "choice",\n'
+      '                      "instructions": "What is it about?",\n'
+      '                      "options": [\n'
+      '                          {"id": "billing", "description": "Payments or invoices"},\n'
+      '                          {"id": "bug", "description": "Something broken in the app"},\n'
+      '                          {"id": "other", "description": "Anything else"}]},\n'
+      '        },\n'
+      '    },\n'
+      ').json()["answers"]\n'
+      'print(answers["urgent"]["probabilities"]["true"])\n'
+      'print(answers["topic"]["choice"])';
 
   String _pythonToolsExample() => '$_pythonClient\n'
       'tools = [{\n'
