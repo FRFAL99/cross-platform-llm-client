@@ -14,6 +14,7 @@ import '../models/ai_model.dart';
 import '../core/constants.dart';
 import '../core/ui.dart';
 import '../services/cluster_service.dart';
+import '../services/speed_estimate.dart';
 import 'settings_controller.dart';
 
 part 'model_controller_downloads.dart';
@@ -98,17 +99,7 @@ class ModelController extends GetxController {
   List<AiModel> get filteredDisplayedModels {
     final filter =
         localFilter.value.isEmpty ? defaultLocalFilter : localFilter.value;
-    final filtered = displayedModels.where((model) {
-      switch (filter) {
-        case 'uncensored':
-          return isUncensoredModel(model);
-        case 'vision':
-          return isVisionModel(model);
-        case 'general':
-        default:
-          return isGeneralModel(model);
-      }
-    }).toList();
+    final filtered = displayedModels.where(ofFilter(filter)).toList();
     // The filter's recommended pick goes first; the rest keep their order
     // (List.sort isn't stable, so partition instead).
     return [
@@ -118,6 +109,13 @@ class ModelController extends GetxController {
   }
 
   String get defaultLocalFilter => 'general';
+
+  /// Test for the models a list filter shows.
+  bool Function(AiModel) ofFilter(String filter) => switch (filter) {
+        'uncensored' => isUncensoredModel,
+        'vision' => isVisionModel,
+        _ => isGeneralModel,
+      };
 
   double get importProgress => importTotalBytes.value <= 0
       ? 0.0
@@ -317,6 +315,53 @@ class ModelController extends GetxController {
     final bytes = fileSizes[model.filename] ?? 0;
     if (bytes > 0) return DownloadService.formatBytes(bytes);
     return model.size;
+  }
+
+  /// This phone's speed from its newest speed test, or null before any.
+  /// Reactive: rebuilds an Obx when a speed test finishes.
+  DeviceSpeed? get deviceSpeed {
+    _inference.benchmarkRevision.value;
+    return DeviceSpeed.fromResults(_inference.benchmarkResults, (tested) {
+      final m = availableModels
+          .firstWhereOrNull((m) => m.name == tested || m.filename == tested);
+      return m == null ? 0 : _knownModelBytes(m);
+    });
+  }
+
+  /// Estimated speed of [model] on this phone, null before any speed test.
+  SpeedEstimate? speedEstimate(AiModel model) {
+    final bytes = _knownModelBytes(model);
+    if (bytes <= 0) return null;
+    return deviceSpeed?.estimate(bytes, model.name);
+  }
+
+  /// The best catalogue model of a type for this phone: the biggest that
+  /// fits in RAM and still generates at a usable speed (speed_estimate.dart).
+  /// Null before any speed test.
+  AiModel? bestForPhone(bool Function(AiModel) ofType) {
+    final speed = deviceSpeed;
+    if (speed == null) return null;
+    final candidates = [
+      for (final m in availableModels)
+        if (!m.isImported && !m.isCustom && ofType(m))
+          ModelCandidate(m, m.name, _knownModelBytes(m),
+              totalBytes: _declaredTotalBytes(m)),
+    ];
+    final ram = Get.find<DeviceInfoService>().totalRamGB.value;
+    return bestModelFor(candidates, speed, ram)?.model;
+  }
+
+  /// Weights plus vision file, from the catalogue's size ("731 MB + 583 MB
+  /// vision"), or the file on disk.
+  int _declaredTotalBytes(AiModel model) {
+    var total = 0;
+    for (final m in RegExp(r'([\d.]+)\s*(GB|MB)', caseSensitive: false)
+        .allMatches(model.size)) {
+      final value = double.tryParse(m.group(1) ?? '') ?? 0;
+      total +=
+          (value * (m.group(2)!.toUpperCase() == 'GB' ? 1e9 : 1e6)).round();
+    }
+    return total > 0 ? total : _knownModelBytes(model);
   }
 
   int _knownModelBytes(AiModel model) {

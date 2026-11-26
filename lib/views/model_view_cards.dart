@@ -10,6 +10,9 @@ extension _CardsSection on ModelView {
         ? controller.defaultLocalFilter
         : controller.localFilter.value;
     return [
+      if (model == controller.bestForPhone(controller.ofFilter(filter)))
+        AppTag('Best for this phone',
+            icon: Icons.speed_rounded, color: AppTokens.of(context).green),
       if (model.recommendedFor.contains(filter))
         AppTag('Recommended',
             icon: Icons.star_rounded, color: AppTokens.of(context).accent),
@@ -216,6 +219,9 @@ extension _CardsSection on ModelView {
         if (!library && controller.isVisionModel(model) && filter != 'vision')
           'Vision',
         if (model.isImported) 'Imported',
+        if (model.isImported ? null : controller.speedEstimate(model)
+            case final e?)
+          _speedLabel(e),
       ].join(' · ');
       void openDetails() => _showModelDetails(
           context, model, subtitle, secondary, disableActions, primaryAction,

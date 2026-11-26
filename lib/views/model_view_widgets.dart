@@ -1,5 +1,8 @@
 part of 'model_view.dart';
 
+/// "~14 tok/s": estimated generation speed on this phone.
+String _speedLabel(SpeedEstimate e) => '~${e.generationTps.round()} tok/s';
+
 // Models screen: small shared widgets.
 
 /// Soft accent pill ("Load") for list rows.
