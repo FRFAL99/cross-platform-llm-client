@@ -13,6 +13,9 @@ class DeviceInfoService extends GetxService {
   final socFamily = platform_info.SocFamily.unknown.obs;
   final socHardware = ''.obs;
 
+  /// CPU threads for llama.cpp: one per performance core (see cpu_threads.dart).
+  final cpuThreads = 4.obs;
+
   // Recommended limits based on device RAM
   int get recommendedContextSize => _tierConfig['contextSize']!;
   int get recommendedMaxTokens => _tierConfig['maxTokens']!;
@@ -76,7 +79,8 @@ class DeviceInfoService extends GetxService {
 
     print('[DeviceInfo] RAM: ${totalRamGB.value.toStringAsFixed(1)}GB total, '
         '${availableRamGB.value.toStringAsFixed(1)}GB available, '
-        'tier: ${deviceTier.value}, tensor: ${isTensorSoC.value}');
+        'tier: ${deviceTier.value}, tensor: ${isTensorSoC.value}, '
+        'cpu threads: ${cpuThreads.value}');
     return this;
   }
 
@@ -89,6 +93,7 @@ class DeviceInfoService extends GetxService {
     final clamped = rawIndex < 0 ? 0 : (rawIndex > 8 ? 8 : rawIndex);
     socFamily.value = platform_info.SocFamily.values[clamped];
     socHardware.value = (info['socHardware'] as String?) ?? '';
+    cpuThreads.value = (info['cpuThreads'] as num? ?? 4).toInt();
   }
 
   String get tierDescription {

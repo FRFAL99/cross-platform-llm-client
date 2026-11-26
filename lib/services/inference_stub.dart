@@ -31,7 +31,7 @@ class InferenceEngine {
   Future<LoadResult> loadModel({
     required String modelPath,
     required int contextSize,
-    required String deviceTier,
+    required int cpuThreads,
     bool isTensorSoC = false,
     bool allowGgufGpu = false,
     String? mmprojPath,

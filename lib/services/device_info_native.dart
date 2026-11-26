@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:llama_flutter_android/llama_flutter_android.dart';
 
+import 'cpu_threads.dart';
+
 /// Detected SoC family.
 enum SocFamily {
   apple,
@@ -44,11 +46,11 @@ extension SocFamilyExt on SocFamily {
       case SocFamily.apple:
         return 'Q4_K_M (safe default) · Q5_K_M for quality';
       case SocFamily.snapdragon:
-        return 'Q4_K_M (recommended) · Q4_0_4_8 on X Elite';
+        return 'Q4_0 (fastest on CPU) · Q4_K_M';
       case SocFamily.mediatek:
-        return 'Q4_K_M (recommended)';
+        return 'Q4_0 (fastest on CPU) · Q4_K_M';
       case SocFamily.exynos:
-        return 'Q4_K_M (recommended)';
+        return 'Q4_0 (fastest on CPU) · Q4_K_M';
       case SocFamily.googleTensor:
         return 'Q4_0 or Q5_K_M · AVOID Q4_K_M';
       case SocFamily.unisoc:
@@ -77,8 +79,7 @@ SocFamily _detectSocFamily(String cpuinfo, String hardware) {
   final hwLower = hardware.toLowerCase();
 
   // Google Tensor (Pixel 6/7/8/9)
-  if (RegExp(r'gs\d{3}').hasMatch(hwLower) ||
-      lower.contains('google tensor')) {
+  if (RegExp(r'gs\d{3}').hasMatch(hwLower) || lower.contains('google tensor')) {
     return SocFamily.googleTensor;
   }
 
@@ -138,6 +139,7 @@ Future<Map<String, dynamic>> getDeviceInfo() async {
   double availableRam = 2.0;
   SocFamily socFamily = SocFamily.unknown;
   String hardware = '';
+  int cpuThreads = 4;
 
   try {
     if (Platform.isAndroid || Platform.isLinux) {
@@ -160,6 +162,8 @@ Future<Map<String, dynamic>> getDeviceInfo() async {
                 ?.trim() ??
             '';
         socFamily = _detectSocFamily(cpuinfo, hardware);
+        cpuThreads = recommendedCpuThreads(
+            parseCpuCores(cpuinfo, await _coreMaxFrequencies()));
       } catch (_) {}
     } else if (Platform.isIOS) {
       final plugin = LlamaHostApi();
@@ -182,5 +186,26 @@ Future<Map<String, dynamic>> getDeviceInfo() async {
     'isTensorSoC': socFamily == SocFamily.googleTensor ? 1.0 : 0.0,
     'socFamily': socFamily.index,
     'socHardware': hardware,
+    'cpuThreads': cpuThreads,
   };
+}
+
+/// Maximum frequency (kHz) of each CPU core, by core number.
+Future<Map<int, int>> _coreMaxFrequencies() async {
+  final result = <int, int>{};
+  for (var i = 0; i < 16; i++) {
+    final file = File('/sys/devices/system/cpu/cpu$i/cpufreq/cpuinfo_max_freq');
+    try {
+      if (!await file.exists()) {
+        if (i > 0 &&
+            !await Directory('/sys/devices/system/cpu/cpu$i').exists()) {
+          break;
+        }
+        continue;
+      }
+      final value = int.tryParse((await file.readAsString()).trim());
+      if (value != null) result[i] = value;
+    } catch (_) {}
+  }
+  return result;
 }
