@@ -123,27 +123,33 @@ flutter build apk --debug
 
 ### Releases
 
-The `Android` GitHub Actions workflow runs `flutter analyze` and `flutter test`
-on every pull request; it does not build APKs there. To get a debug-signed APK
-from a branch (or to check that native code still compiles), run the workflow
-by hand from the Actions tab. Pushing a tag `vX.Y.Z` that matches `version:` in `pubspec.yaml` builds signed per-ABI APKs
-and publishes them as a GitHub Release, which the in-app updater picks up.
+One click: **Actions › Release › Run workflow** (choose `patch`, `minor` or
+`major`, or type an exact version). The workflow raises `version:` in
+`pubspec.yaml` (name and build number), commits it to `main`, tags `vX.Y.Z`
+and starts the `Android` workflow on the tag, which builds the APKs signed
+with the release key and publishes them as a GitHub Release with generated
+notes. It takes 30 to 60 minutes. Phones update over the installed app,
+from Settings › App updates or by opening the new APK.
 
-One-time setup: create a keystore and store it in the repository secrets
-(Settings › Secrets and variables › Actions).
+The `Android` workflow also runs `flutter analyze` and `flutter test` on every
+pull request (no APKs there). Run it by hand on a branch to get test APKs as a
+downloadable artifact (or to check that native code compiles): once the
+release key is set up they are signed with it too, so they install over a
+released app as long as their version is not lower.
+
+One-time setup, on your computer (needs a JDK or Android Studio; with the
+GitHub CLI logged in it also sets the secrets):
 
 ```bash
-keytool -genkeypair -v -keystore privatelm-release.jks -alias privatelm \
-  -keyalg RSA -keysize 4096 -validity 10000
-base64 -w0 privatelm-release.jks   # value for ANDROID_KEYSTORE_BASE64
+bash scripts/create_release_key.sh   # creates ~/onelm-release.jks
 ```
 
-Secrets: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`,
-`ANDROID_KEY_ALIAS` (`privatelm`), `ANDROID_KEY_PASSWORD`. Keep a backup of
-the `.jks` file: losing it means users must uninstall to update.
-
-To release: bump `version:` in `pubspec.yaml` (both parts, e.g.
-`1.1.1+9`), merge, then `git tag v1.1.1 && git push origin v1.1.1`.
+Without the GitHub CLI, add the secrets it prints in Settings › Secrets and
+variables › Actions: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`,
+`ANDROID_KEY_ALIAS` (`privatelm`), `ANDROID_KEY_PASSWORD`. Keep a backup of the
+`.jks` file and its password: an update signed with another key doesn't
+install over the app, and users would have to uninstall it (losing models and
+chats) to move on.
 
 ### Local release build
 

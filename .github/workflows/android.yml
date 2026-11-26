@@ -2,11 +2,13 @@ name: Android
 
 # Pull requests: analyze and test only (a few minutes). No APK: building
 # llama.cpp for every ABI takes most of the run and nobody installs PR builds.
-# Manual run (Actions > Android > Run workflow) on a branch: also build
-# debug-signed APKs as a downloadable artifact, e.g. to check native changes
-# compile or to try a build on a phone.
-# Tags vX.Y.Z (or a manual run on a tag): build signed per-ABI APKs and publish
-# them as a GitHub Release. The in-app updater reads these releases.
+# Manual run (Actions > Android > Run workflow) on a branch: also build APKs
+# as a downloadable artifact, e.g. to check native changes compile or to try a
+# build on a phone. They are signed with the release key when the secrets are
+# set, so they install over a released app (debug key otherwise).
+# Tags vX.Y.Z (or a manual run on a tag, which is what the Release workflow
+# starts): build signed per-ABI APKs and publish them as a GitHub Release. The
+# in-app updater reads these releases.
 
 on:
   pull_request:
@@ -78,16 +80,20 @@ jobs:
           fi
 
       - name: Signing key
-        if: startsWith(github.ref, 'refs/tags/v')
         env:
+          IS_TAG: ${{ startsWith(github.ref, 'refs/tags/v') }}
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           if [ -z "$KEYSTORE_BASE64" ]; then
-            echo "Missing ANDROID_KEYSTORE_BASE64 secret: see README, Releases." >&2
-            exit 1
+            if [ "$IS_TAG" = "true" ]; then
+              echo "Missing ANDROID_KEYSTORE_BASE64 secret: see README, Releases." >&2
+              exit 1
+            fi
+            echo "No release key: this test build is debug-signed and won't install over a release."
+            exit 0
           fi
           echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
           {
