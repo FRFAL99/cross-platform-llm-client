@@ -7,6 +7,7 @@ import '../core/ui.dart';
 import '../models/ai_model.dart';
 import '../services/download_service.dart';
 import '../services/inference_service.dart';
+import '../services/speed_estimate.dart';
 import 'load_settings_view.dart';
 
 part 'model_view_import.dart';

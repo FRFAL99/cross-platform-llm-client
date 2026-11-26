@@ -14,7 +14,9 @@ extension _FeaturedSection on ModelView {
   /// Horizontal row of the recommended pick for each type.
   Widget _buildFeatured(BuildContext context) {
     final t = AppTokens.of(context);
-    final picks = <AiModel>[];
+    // After a speed test: the best text model for this phone comes first.
+    final best = controller.bestForPhone(controller.isGeneralModel);
+    final picks = <AiModel>[if (best != null) best];
     for (final type in ['general', 'vision', 'uncensored']) {
       final m = controller.availableModels
           .firstWhereOrNull((m) => m.recommendedFor.contains(type));
@@ -33,14 +35,24 @@ extension _FeaturedSection on ModelView {
           clipBehavior: Clip.none,
           itemCount: picks.length,
           separatorBuilder: (_, __) => const SizedBox(width: 10),
-          itemBuilder: (_, i) => _buildFeaturedCard(context, picks[i]),
+          itemBuilder: (_, i) => _buildFeaturedCard(context, picks[i],
+              bestForPhone: picks[i] == best),
         ),
       ),
+      if (best == null)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 10, 4, 0),
+          child: Text(
+              'Run a speed test (Home › Speed) with any model to see how '
+              'fast each model would run here and which one suits this phone.',
+              style: t.small),
+        ),
       const SizedBox(height: 18),
     ]);
   }
 
-  Widget _buildFeaturedCard(BuildContext context, AiModel model) {
+  Widget _buildFeaturedCard(BuildContext context, AiModel model,
+      {bool bestForPhone = false}) {
     return Obx(() {
       final t = AppTokens.of(context);
       final (name, _) = _cleanName(model);
@@ -85,11 +97,21 @@ extension _FeaturedSection on ModelView {
                       overflow: TextOverflow.ellipsis,
                       style: t.bodyStrong.copyWith(height: 1.25)),
                   const SizedBox(height: 2),
-                  Text(_pitch[type]!, style: t.small),
+                  Text(bestForPhone ? 'Best for this phone' : _pitch[type]!,
+                      style: bestForPhone
+                          ? t.small.copyWith(color: t.accent)
+                          : t.small),
                   const SizedBox(height: 10),
                   Row(children: [
                     Expanded(
-                      child: Text(controller.modelSizeLabel(model),
+                      child: Text(
+                          [
+                            controller.modelSizeLabel(model),
+                            if (controller.speedEstimate(model) case final e?)
+                              _speedLabel(e),
+                          ].join(' · '),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: t.small.copyWith(fontFeatures: _tabular)),
                     ),
                     action,

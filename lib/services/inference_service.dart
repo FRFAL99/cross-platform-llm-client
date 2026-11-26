@@ -69,6 +69,9 @@ class InferenceService extends GetxService {
   /// The speed test is running (the model is busy meanwhile).
   final isBenchmarking = false.obs;
 
+  /// Bumped when the speed test history changes, so views can react.
+  final benchmarkRevision = 0.obs;
+
   /// Speed test history, newest first.
   List<BenchmarkResult> get benchmarkResults => [
         for (final raw
@@ -110,10 +113,12 @@ class InferenceService extends GetxService {
         promptTokens: promptTokens,
         generatedTokens: genTokens,
         date: DateTime.now(),
+        modelBytes: _lastLoad == null ? 0 : await _fileBytes(_lastLoad!.path),
       );
       final history =
           [result, ...benchmarkResults].take(30).map((r) => r.toMap()).toList();
       await _hive.setSetting(AppConstants.keyBenchmarkResults, history);
+      benchmarkRevision.value++;
       Get.find<AppLogService>()
           .info('Speed test: ${result.model} on ${result.setup}: '
               'prompt ${result.promptTps.toStringAsFixed(1)} tok/s, '
@@ -199,8 +204,10 @@ class InferenceService extends GetxService {
     }
   }
 
-  Future<void> clearBenchmarkResults() =>
-      _hive.setSetting(AppConstants.keyBenchmarkResults, const []);
+  Future<void> clearBenchmarkResults() async {
+    await _hive.setSetting(AppConstants.keyBenchmarkResults, const []);
+    benchmarkRevision.value++;
+  }
 
   /// Messages of the last request's history that didn't fit in the context
   /// window and were left out (the oldest ones).

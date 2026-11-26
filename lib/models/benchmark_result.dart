@@ -15,6 +15,10 @@ class BenchmarkResult {
   final int generatedTokens;
   final DateTime date;
 
+  /// Size of the model file in bytes, 0 if unknown (older runs). Lets one
+  /// run estimate the speed of other models (speed_estimate.dart).
+  final int modelBytes;
+
   const BenchmarkResult({
     required this.model,
     required this.setup,
@@ -23,6 +27,7 @@ class BenchmarkResult {
     required this.promptTokens,
     required this.generatedTokens,
     required this.date,
+    this.modelBytes = 0,
   });
 
   /// 'cpu' or 'gpu' for a run on this phone alone, 'cluster' otherwise.
@@ -40,6 +45,7 @@ class BenchmarkResult {
         'promptTokens': promptTokens,
         'generatedTokens': generatedTokens,
         'date': date.toIso8601String(),
+        if (modelBytes > 0) 'modelBytes': modelBytes,
       };
 
   static BenchmarkResult? fromMap(Object? raw) {
@@ -53,6 +59,7 @@ class BenchmarkResult {
         promptTokens: (raw['promptTokens'] as num?)?.toInt() ?? 512,
         generatedTokens: (raw['generatedTokens'] as num?)?.toInt() ?? 128,
         date: DateTime.parse(raw['date'] as String),
+        modelBytes: (raw['modelBytes'] as num?)?.toInt() ?? 0,
       );
     } catch (_) {
       return null;
