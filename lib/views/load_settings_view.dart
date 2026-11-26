@@ -41,9 +41,9 @@ class LoadSettingsView extends GetView<SettingsController> {
   }
 
   String get _modeLabel => switch (controller.performanceMode.value) {
-        'gpu_fast' => 'GPU fast',
-        'cpu_safe' => 'CPU safe',
-        _ => 'Auto fast',
+        'gpu_fast' => 'GPU',
+        'cpu_safe' => 'CPU only',
+        _ => 'Auto',
       };
 
   /// Short summary for the row that opens this page.
@@ -60,21 +60,22 @@ class LoadSettingsView extends GetView<SettingsController> {
     const modes = [
       (
         value: 'auto_fast',
-        title: 'Auto fast',
-        subtitle:
-            "Uses the GPU when supported, CPU if the GPU can't load the model",
+        title: 'Auto',
+        subtitle: 'CPU, which is faster on most phones. Switches to the GPU '
+            'when speed tests of a model show the GPU winning here',
         icon: Icons.auto_awesome_outlined
       ),
       (
         value: 'gpu_fast',
-        title: 'GPU fast',
-        subtitle: 'Always tries the GPU. Fastest, may crash on some devices',
+        title: 'GPU',
+        subtitle: 'Always tries the GPU (Vulkan). Faster only on some '
+            'phones, and some drivers crash',
         icon: Icons.bolt_rounded
       ),
       (
         value: 'cpu_safe',
-        title: 'CPU safe',
-        subtitle: 'CPU only. Most stable, slower',
+        title: 'CPU only',
+        subtitle: 'Never touches the GPU. Most stable',
         icon: Icons.shield_outlined
       ),
     ];
@@ -172,6 +173,7 @@ class LoadSettingsView extends GetView<SettingsController> {
           child: Container(height: 0.5, color: t.hairline),
         ),
         kv('Processor mode', _modeLabel),
+        kv('CPU threads', '${device.cpuThreads.value} (performance cores)'),
         kv('Available memory',
             '${device.availableRamGB.value.toStringAsFixed(1)} GB'),
         kv('Recommended context', '${device.recommendedContextSize}'),

@@ -25,6 +25,13 @@ class BenchmarkResult {
     required this.date,
   });
 
+  /// 'cpu' or 'gpu' for a run on this phone alone, 'cluster' otherwise.
+  String get backend => switch (setup) {
+        'This phone (GPU)' => 'gpu',
+        'This phone (CPU)' => 'cpu',
+        _ => 'cluster',
+      };
+
   Map<String, dynamic> toMap() => {
         'model': model,
         'setup': setup,

@@ -9,6 +9,7 @@ import 'cluster_service.dart';
 import 'context_window.dart';
 import 'history_summary.dart';
 import 'lost_worker_retry.dart';
+import 'processor_choice.dart';
 import '../utils/thought_parser.dart';
 import 'stop_sequence_filter.dart';
 import '../core/ui.dart' show showToast, ToastTone;
@@ -368,9 +369,15 @@ class InferenceService extends GetxService {
             defaultValue: AppConstants.defaultPerformanceMode,
           ) ??
           AppConstants.defaultPerformanceMode;
-      // The Performance setting alone decides: CPU safe never uses the GPU;
-      // Auto fast and GPU fast try it.
-      final allowGgufGpu = performanceMode != 'cpu_safe';
+      // GPU always tries the GPU, CPU never does. Auto uses the CPU (faster
+      // than llama.cpp's Vulkan backend on most phones) unless speed tests of
+      // this model showed the GPU winning here.
+      final allowGgufGpu = switch (performanceMode) {
+        'gpu_fast' => true,
+        'cpu_safe' => false,
+        _ =>
+          autoUsesGpu(benchmarkResults, modelName ?? modelPath.split('/').last),
+      };
       // Clear crash state left by older versions of the app.
       await _hive.setSetting(AppConstants.keyGgufGpuPending, false);
 
@@ -389,7 +396,6 @@ class InferenceService extends GetxService {
 
       final finalContextSize = contextSize;
 
-      final deviceTier = _getDeviceTier();
       final isTensorSoC = _getIsTensorSoC();
 
       // Phone cluster: GGUF layers spread across worker phones. This phone
@@ -405,7 +411,7 @@ class InferenceService extends GetxService {
       var result = await _loadModelOnEngine(
         modelPath: modelPath,
         contextSize: finalContextSize,
-        deviceTier: deviceTier,
+        cpuThreads: _getCpuThreads(),
         isTensorSoC: isTensorSoC,
         allowGgufGpu: allowGgufGpu && clusterWorkers == 0,
         mmprojPath: mmprojPath,
@@ -827,12 +833,11 @@ class InferenceService extends GetxService {
     contextTokensTotal.value = info.contextSize;
   }
 
-  String _getDeviceTier() {
+  int _getCpuThreads() {
     try {
-      final device = Get.find<DeviceInfoService>();
-      return device.deviceTier.value;
+      return Get.find<DeviceInfoService>().cpuThreads.value;
     } catch (_) {
-      return 'mid';
+      return 4;
     }
   }
 
@@ -848,7 +853,7 @@ class InferenceService extends GetxService {
   Future<platform.LoadResult> _loadModelOnEngine({
     required String modelPath,
     required int contextSize,
-    required String deviceTier,
+    required int cpuThreads,
     bool isTensorSoC = false,
     bool allowGgufGpu = false,
     String? mmprojPath,
@@ -857,7 +862,7 @@ class InferenceService extends GetxService {
       return await _engine!.loadModel(
         modelPath: modelPath,
         contextSize: contextSize,
-        deviceTier: deviceTier,
+        cpuThreads: cpuThreads,
         isTensorSoC: isTensorSoC,
         allowGgufGpu: allowGgufGpu,
         mmprojPath: mmprojPath,

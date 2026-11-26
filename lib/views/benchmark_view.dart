@@ -118,6 +118,13 @@ class _BenchmarkViewState extends State<BenchmarkView> {
               'from a few seconds to a few minutes; chat and API requests wait '
               'meanwhile. The chat\'s cached context is cleared.',
             ),
+            if (split == null)
+              const SectionFootnote(
+                'CPU or GPU? On most phones the CPU is faster. To compare, run '
+                'the test, switch Processor mode to GPU in Models › Load '
+                'settings, reload the model and run it again: Auto then uses '
+                'whichever was faster for that model.',
+              ),
             if (_history.isNotEmpty) ...[
               Row(children: [
                 const Expanded(child: SectionHeader('History')),

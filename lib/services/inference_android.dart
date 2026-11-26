@@ -49,7 +49,9 @@ class InferenceEngine {
   Future<LoadResult> loadModel({
     required String modelPath,
     required int contextSize,
-    required String deviceTier,
+
+    /// CPU threads: one per performance core (DeviceInfoService.cpuThreads).
+    required int cpuThreads,
     bool isTensorSoC = false,
     bool allowGgufGpu = true,
     String? mmprojPath,
@@ -118,22 +120,10 @@ class InferenceEngine {
     }
 
     // ── Thread Tuning ──
-    int threads;
-    if (gpuLayers > 0) {
-      threads = deviceTier == 'ultra'
-          ? 4
-          : deviceTier == 'high'
-              ? 4
-              : 4;
-    } else {
-      threads = deviceTier == 'ultra'
-          ? 6
-          : deviceTier == 'high'
-              ? 5
-              : deviceTier == 'mid'
-                  ? 4
-                  : 3;
-    }
+    // One thread per performance core: threads on the efficiency cores make
+    // llama.cpp wait for its slowest thread. With the GPU, the CPU only feeds
+    // it and runs the layers left on the CPU.
+    int threads = gpuLayers > 0 ? cpuThreads.clamp(1, 4) : cpuThreads;
 
     // Google Tensor SoC (Pixel 6/7/8) has known Q4_K_M dequant bugs
     // that corrupt logits at >1 thread on Gemma models. Force single-threaded
